@@ -125,45 +125,6 @@ impl Simulation {
         self.time += Time(1);
     }
 
-    /// Gets the state the given rule results in from the given state using or updating the cache respectively.
-    fn get_new_state(
-        &self,
-        base_state_hash: &StateHash,
-        rule_name: &RuleName,
-    ) -> (State, Option<ActionCacheUpdate>) {
-        let rule_cache = self
-            .cache
-            .rules
-            .get(rule_name)
-            .expect("Rule {rule_name} not found in cache");
-
-        if let Some(state_hash) = rule_cache.actions.get(base_state_hash) {
-            if let Some(new_state) = self.possible_states.state(state_hash) {
-                return (new_state, None);
-            }
-        }
-
-        let rule = self
-            .rules
-            .get(rule_name)
-            .expect("Rule {rule_name} not found");
-        let base_state = self
-            .possible_states
-            .state(base_state_hash)
-            .expect("Base state {base_state_hash} not found in possible_states");
-        let new_state = rule.apply(base_state, &self.resources);
-
-        Resource::check_resource_capacities(&self.resources, &new_state);
-
-        let new_state_hash = StateHash::from_state(&new_state);
-        let cache_update = ActionCacheUpdate {
-            rule_name: rule_name.clone(),
-            base_state_hash: *base_state_hash,
-            new_state_hash,
-        };
-        (new_state, Some(cache_update))
-    }
-
     // Add all reachable states from the base state to reachable_states and possible_states while using or updating the cache respectively.
     fn get_reachable_states_from_base_state(
         &self,
@@ -200,8 +161,13 @@ impl Simulation {
             if rule_applies.is_true() {
                 new_base_state_probability *= 1. - f64::from(rule.probability_weight);
                 applying_rules_probability_weight_sum += rule.probability_weight;
-                let (new_state, action_cache_update) =
-                    self.get_new_state(base_state_hash, rule_name);
+                let (new_state, action_cache_update) = rule.apply_using_cache(
+                    &self.cache,
+                    &self.possible_states,
+                    rule_name.clone(),
+                    *base_state_hash,
+                    &self.resources,
+                );
                 if let Some(cache) = action_cache_update {
                     action_cache_updates.push(cache);
                 }

@@ -124,7 +124,7 @@ impl Rule {
 
     pub fn apply(&self, state: State, resources: &HashMap<ResourceName, Resource>) -> State {
         let actions = (self.actions)(state.clone());
-        state.apply_actions(&actions, resources)
+        state.apply_actions(actions, resources)
     }
 
     /// Checks if a given rule applies to the given state using or updating the cache respectively.
@@ -154,6 +154,40 @@ impl Rule {
                 (result, Some(cache))
             }
         }
+    }
+
+    pub(crate) fn apply_using_cache(
+        &self,
+        cache: &Cache,
+        possible_states: &PossibleStates,
+        rule_name: RuleName,
+        base_state_hash: StateHash,
+        resources: &HashMap<ResourceName, Resource>,
+    ) -> (State, Option<ActionCacheUpdate>) {
+        let rule_cache = cache
+            .rules
+            .get(&rule_name)
+            .expect("Rule {rule_name} not found in cache");
+
+        if let Some(state_hash) = rule_cache.actions.get(&base_state_hash) {
+            if let Some(new_state) = possible_states.state(state_hash) {
+                return (new_state, None);
+            }
+        }
+        let base_state = possible_states
+            .state(&base_state_hash)
+            .expect("Base state {base_state_hash} not found in possible_states");
+        let new_state = self.apply(base_state, resources);
+
+        Resource::check_resource_capacities(resources, &new_state);
+
+        let new_state_hash = StateHash::from_state(&new_state);
+        let cache_update = ActionCacheUpdate {
+            rule_name: rule_name.clone(),
+            base_state_hash,
+            new_state_hash,
+        };
+        (new_state, Some(cache_update))
     }
 }
 

@@ -90,7 +90,7 @@ impl State {
 
     pub(crate) fn apply_actions(
         &self,
-        actions: &Vec<Action>,
+        actions: Vec<Action>,
         resources: &HashMap<ResourceName, Resource>,
     ) -> State {
         let mut new_state = self.clone();
