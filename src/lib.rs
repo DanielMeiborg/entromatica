@@ -121,88 +121,8 @@ impl Simulation {
     /// Runs the simulation for one timestep.
     pub fn next_step(&mut self) {
         self.update_reachable_states();
-        self.entropy = self.get_entropy();
+        self.entropy = self.reachable_states.entropy();
         self.time += Time(1);
-    }
-
-    /// Checks if the given state satisfies all resource constrains.
-    fn check_resource_capacities(&self, new_state: &State) {
-        for (resource_name, resource) in &self.resources {
-            match &resource.capacity {
-                Capacity::Limited(limit) => {
-                    let mut total_amount = Amount(0.);
-                    for (entity_name, entity) in &new_state.entities {
-                        let entity_amount = entity
-                            .resources
-                            .get(resource_name)
-                            .expect("Entity {entity_name} does not have resource {resource_name}");
-                        if *entity_amount < Amount(0.) {
-                            panic!(
-                                "Entity {} has negative amount of resource {}",
-                                entity_name, resource_name
-                            );
-                        }
-                        total_amount += *entity_amount;
-                        if total_amount > *limit {
-                            panic!(
-                                "Resource limit exceeded for resource {resource_name}",
-                                resource_name = resource_name
-                            );
-                        }
-                    }
-                }
-                Capacity::Unlimited => {
-                    for (entity_name, entity) in &new_state.entities {
-                        let entity_amount = entity
-                            .resources
-                            .get(resource_name)
-                            .expect("Entity {entity_name} does not have resource {resource_name}");
-                        if *entity_amount < Amount(0.) {
-                            panic!(
-                                "Entity {} has negative amount of resource {}",
-                                entity_name, resource_name
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// Checks if a given rule applies to the given state using or updating the cache respectively.
-    fn check_if_rule_applies(
-        &self,
-        rule_name: &RuleName,
-        state_hash: &StateHash,
-    ) -> (RuleApplies, Option<ConditionCacheUpdate>) {
-        let rule_cache = self
-            .cache
-            .rules
-            .get(rule_name)
-            .expect("Rule {rule_name} not found in cache");
-        let rule = self
-            .rules
-            .get(rule_name)
-            .expect("Rule {rule_name} not found");
-        if rule.probability_weight == ProbabilityWeight(0.) {
-            return (RuleApplies(false), None);
-        }
-        match rule_cache.condition.get(state_hash) {
-            Some(rule_applies) => (*rule_applies, None),
-            None => {
-                let state = self
-                    .possible_states
-                    .state(state_hash)
-                    .expect("State with hash {state_hash} not found in possible_states");
-                let result = rule.applies(&state);
-                let cache = ConditionCacheUpdate {
-                    rule_name: rule_name.clone(),
-                    base_state_hash: *state_hash,
-                    applies: result,
-                };
-                (result, Some(cache))
-            }
-        }
     }
 
     /// Gets the state the given rule results in from the given state using or updating the cache respectively.
@@ -231,9 +151,9 @@ impl Simulation {
             .possible_states
             .state(base_state_hash)
             .expect("Base state {base_state_hash} not found in possible_states");
-        let new_state = rule.apply(&base_state, &self.resources);
+        let new_state = rule.apply(base_state, &self.resources);
 
-        self.check_resource_capacities(&new_state);
+        Resource::check_resource_capacities(&self.resources, &new_state);
 
         let new_state_hash = StateHash::from_state(&new_state);
         let cache_update = ActionCacheUpdate {
@@ -268,8 +188,12 @@ impl Simulation {
         let mut new_possible_states: PossibleStates = PossibleStates::new();
 
         for (rule_name, rule) in &self.rules {
+            let state = self
+                .possible_states
+                .state(base_state_hash)
+                .expect("Base state {base_state_hash} not found in possible_states");
             let (rule_applies, condition_cache_update) =
-                self.check_if_rule_applies(rule_name, base_state_hash);
+                rule.applies_using_cache(&self.cache, rule_name.clone(), *base_state_hash, state);
             if let Some(cache) = condition_cache_update {
                 condition_cache_updates.push(cache);
             }
@@ -295,7 +219,7 @@ impl Simulation {
         }
 
         let probabilities_for_reachable_states_from_base_state =
-            Simulation::get_probabilities_for_reachable_states_from_base_state(
+            Simulation::get_probabilities_for_reachable_states(
                 reachable_states_from_base_state_by_rule_probability_weight,
                 *base_state_hash,
                 *base_state_probability,
@@ -315,18 +239,15 @@ impl Simulation {
         )
     }
 
-    fn get_probabilities_for_reachable_states_from_base_state(
-        reachable_states_from_base_state_by_rule_probability_weight: HashMap<
-            StateHash,
-            ProbabilityWeight,
-        >,
+    fn get_probabilities_for_reachable_states(
+        reachable_states_by_rule_probability_weight: HashMap<StateHash, ProbabilityWeight>,
         base_state_hash: StateHash,
         base_state_probability: Probability,
         new_base_state_probability: Probability,
         applying_rules_probability_weight_sum: ProbabilityWeight,
     ) -> ReachableStates {
         ReachableStates(HashMap::from_par_iter(
-            reachable_states_from_base_state_by_rule_probability_weight
+            reachable_states_by_rule_probability_weight
                 .par_iter()
                 .filter_map(|(new_reachable_state_hash, rule_probability_weight)| {
                     if *new_reachable_state_hash != base_state_hash {
@@ -403,23 +324,6 @@ impl Simulation {
         }
     }
 
-    /// Gets the entropy of the current probability distribution.
-    fn get_entropy(&self) -> Entropy {
-        Entropy(
-            self.reachable_states
-                .0
-                .par_iter()
-                .map(|(_, probability)| {
-                    if *probability > Probability(0.) {
-                        f64::from(*probability) * -f64::from(*probability).log2()
-                    } else {
-                        0.
-                    }
-                })
-                .sum(),
-        )
-    }
-
     ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
     pub fn get_graph_from_cache(&self) -> Graph<State, RuleName> {
         let mut graph = Graph::<State, RuleName>::new();
@@ -452,7 +356,7 @@ impl Simulation {
         while current_reachable_states.len() != self.reachable_states.len()
             && current_reachable_states
                 .keys()
-                .all(|state_hash| self.reachable_states.contains_key(&state_hash))
+                .all(|state_hash| self.reachable_states.contains_key(state_hash))
         {
             current_reachable_states = simulation.reachable_states.clone();
             simulation.next_step();
@@ -466,9 +370,9 @@ impl Simulation {
         ));
         let mut uniform_simulation = simulation.clone();
         uniform_simulation.reachable_states = uniform_distribution;
-        let uniform_entropy = uniform_simulation.get_entropy();
+        let uniform_entropy = uniform_simulation.reachable_states.entropy();
         uniform_simulation.next_step();
-        let uniform_entropy_after_step = uniform_simulation.get_entropy();
+        let uniform_entropy_after_step = uniform_simulation.reachable_states.entropy();
         uniform_entropy == uniform_entropy_after_step
     }
 }

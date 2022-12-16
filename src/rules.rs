@@ -7,6 +7,7 @@ use itertools::Itertools;
 
 use derive_more::*;
 
+use crate::cache::*;
 use crate::resources::*;
 use crate::state::*;
 use crate::units::*;
@@ -117,18 +118,48 @@ impl Rule {
         }
     }
 
-    pub fn applies(&self, state: &State) -> RuleApplies {
-        (self.condition)(state.clone())
+    pub fn applies(&self, state: State) -> RuleApplies {
+        (self.condition)(state)
     }
 
-    pub fn apply(&self, state: &State, resources: &HashMap<ResourceName, Resource>) -> State {
+    pub fn apply(&self, state: State, resources: &HashMap<ResourceName, Resource>) -> State {
         let actions = (self.actions)(state.clone());
         state.apply_actions(&actions, resources)
     }
+
+    /// Checks if a given rule applies to the given state using or updating the cache respectively.
+    pub(crate) fn applies_using_cache(
+        &self,
+        cache: &Cache,
+        rule_name: RuleName,
+        base_state_hash: StateHash,
+        state: State,
+    ) -> (RuleApplies, Option<ConditionCacheUpdate>) {
+        if self.probability_weight == ProbabilityWeight(0.) {
+            return (RuleApplies(false), None);
+        }
+        let rule_cache = cache
+            .rules
+            .get(&rule_name)
+            .expect("Rule {rule_name} not found in cache");
+        match rule_cache.condition.get(&base_state_hash) {
+            Some(rule_applies) => (*rule_applies, None),
+            None => {
+                let result = self.applies(state);
+                let cache = ConditionCacheUpdate {
+                    rule_name,
+                    base_state_hash,
+                    applies: result,
+                };
+                (result, Some(cache))
+            }
+        }
+    }
 }
 
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Display, Default, Not)]
+#[derive(
+    Copy, Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut, Not,
+)]
 pub struct RuleApplies(pub bool);
 
 impl RuleApplies {
@@ -142,7 +173,7 @@ impl RuleApplies {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, AsRef, AsMut, Into)]
 pub struct RuleName(pub String);
 
 impl RuleName {

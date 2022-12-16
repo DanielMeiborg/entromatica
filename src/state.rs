@@ -1,5 +1,5 @@
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[allow(unused_imports)]
 use hashbrown::{HashMap, HashSet};
@@ -88,7 +88,7 @@ impl State {
             .clone()
     }
 
-    pub fn apply_actions(
+    pub(crate) fn apply_actions(
         &self,
         actions: &Vec<Action>,
         resources: &HashMap<ResourceName, Resource>,
@@ -143,11 +143,11 @@ impl PossibleStates {
         Self(HashMap::new())
     }
 
-    pub fn append_state(&mut self, state_hash: StateHash, state: State) {
+    pub(crate) fn append_state(&mut self, state_hash: StateHash, state: State) {
         self.0.insert(state_hash, state);
     }
 
-    pub fn append_states(&mut self, states: &PossibleStates) {
+    pub(crate) fn append_states(&mut self, states: &PossibleStates) {
         for (state_hash, state) in states.0.iter() {
             self.append_state(*state_hash, state.clone());
         }
@@ -155,14 +155,6 @@ impl PossibleStates {
 
     pub fn state(&self, state_hash: &StateHash) -> Option<State> {
         self.0.get(state_hash).cloned()
-    }
-
-    pub fn keys(&self) -> std::iter::Cloned<hashbrown::hash_map::Keys<StateHash, State>> {
-        self.0.keys().cloned()
-    }
-
-    pub fn values(&self) -> std::iter::Cloned<hashbrown::hash_map::Values<StateHash, State>> {
-        self.0.values().cloned()
     }
 }
 
@@ -174,7 +166,7 @@ impl ReachableStates {
         Self(HashMap::new())
     }
 
-    pub fn append_state(&mut self, state_hash: StateHash, state_probability: Probability) {
+    pub(crate) fn append_state(&mut self, state_hash: StateHash, state_probability: Probability) {
         match self.0.get_mut(&state_hash) {
             Some(probability) => {
                 *probability += state_probability;
@@ -185,14 +177,10 @@ impl ReachableStates {
         }
     }
 
-    pub fn append_states(&mut self, states: &ReachableStates) {
+    pub(crate) fn append_states(&mut self, states: &ReachableStates) {
         for (state_hash, state_probability) in states.iter() {
             self.append_state(*state_hash, *state_probability);
         }
-    }
-
-    pub fn keys(&self) -> std::iter::Cloned<hashbrown::hash_map::Keys<StateHash, Probability>> {
-        self.0.keys().cloned()
     }
 
     pub fn values(&self) -> std::iter::Cloned<hashbrown::hash_map::Values<StateHash, Probability>> {
@@ -201,5 +189,21 @@ impl ReachableStates {
 
     pub fn probability_sum(&self) -> Probability {
         Probability(self.par_iter().map(|(_, probability)| probability.0).sum())
+    }
+
+    /// Gets the entropy of the current probability distribution.
+    pub fn entropy(&self) -> Entropy {
+        Entropy(
+            self.0
+                .par_iter()
+                .map(|(_, probability)| {
+                    if *probability > Probability(0.) {
+                        f64::from(*probability) * -f64::from(*probability).log2()
+                    } else {
+                        0.
+                    }
+                })
+                .sum(),
+        )
     }
 }

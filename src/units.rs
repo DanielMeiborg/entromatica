@@ -46,10 +46,6 @@ impl Amount {
     pub fn new() -> Self {
         Self(0.)
     }
-
-    pub fn to_bits(self) -> u64 {
-        self.0.to_bits()
-    }
 }
 
 #[derive(
@@ -94,10 +90,6 @@ impl Entropy {
     pub fn new() -> Self {
         Self(0.)
     }
-
-    pub fn to_bits(self) -> u64 {
-        self.0.to_bits()
-    }
 }
 
 #[derive(
@@ -141,10 +133,6 @@ impl PartialEq for Probability {
 impl Probability {
     pub fn new() -> Self {
         Self(0.)
-    }
-
-    pub fn to_bits(self) -> u64 {
-        self.0.to_bits()
     }
 
     pub fn from_probability_weight(probability_weight: ProbabilityWeight) -> Self {

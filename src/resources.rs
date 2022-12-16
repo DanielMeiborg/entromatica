@@ -1,8 +1,14 @@
 use derive_more::*;
 
+#[allow(unused_imports)]
+use hashbrown::{HashMap, HashSet};
+#[allow(unused_imports)]
+use itertools::Itertools;
+
+use crate::state::*;
 use crate::units::*;
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, AsRef, AsMut, Into)]
 pub struct ResourceName(pub String);
 
 impl ResourceName {
@@ -11,19 +17,17 @@ impl ResourceName {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Display, From, Default)]
 #[allow(dead_code)]
 pub enum Capacity {
     Limited(Amount),
+    #[default]
     Unlimited,
 }
 
 impl Capacity {
-    pub fn new(limit: Option<Amount>) -> Self {
-        match limit {
-            Some(amount) => Self::Limited(amount),
-            None => Self::Unlimited,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -36,7 +40,7 @@ impl Capacity {
 ///
 /// The capacity_per_entity is an additional constrain on the amount of the resource an individual entity can have.
 /// This can again be unlimited.
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Default, From, Into)]
 pub struct Resource {
     pub description: String,
     pub capacity: Capacity,
@@ -44,11 +48,55 @@ pub struct Resource {
 }
 
 impl Resource {
-    pub fn new(description: String, capacity: Capacity, capacity_per_entity: Capacity) -> Self {
+    pub fn new() -> Self {
         Self {
-            description,
-            capacity,
-            capacity_per_entity,
+            description: "".to_string(),
+            capacity: Capacity::new(),
+            capacity_per_entity: Capacity::new(),
+        }
+    }
+
+    /// Checks if the given state satisfies all resource constrains.
+    pub(crate) fn check_resource_capacities(resources: &HashMap<ResourceName, Resource>, state: &State) {
+        for (resource_name, resource) in resources {
+            match &resource.capacity {
+                Capacity::Limited(limit) => {
+                    let mut total_amount = Amount(0.);
+                    for (entity_name, entity) in &state.entities {
+                        let entity_amount = entity
+                            .resources
+                            .get(resource_name)
+                            .expect("Entity {entity_name} does not have resource {resource_name}");
+                        if *entity_amount < Amount(0.) {
+                            panic!(
+                                "Entity {} has negative amount of resource {}",
+                                entity_name, resource_name
+                            );
+                        }
+                        total_amount += *entity_amount;
+                        if total_amount > *limit {
+                            panic!(
+                                "Resource limit exceeded for resource {resource_name}",
+                                resource_name = resource_name
+                            );
+                        }
+                    }
+                }
+                Capacity::Unlimited => {
+                    for (entity_name, entity) in &state.entities {
+                        let entity_amount = entity
+                            .resources
+                            .get(resource_name)
+                            .expect("Entity {entity_name} does not have resource {resource_name}");
+                        if *entity_amount < Amount(0.) {
+                            panic!(
+                                "Entity {} has negative amount of resource {}",
+                                entity_name, resource_name
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 }
