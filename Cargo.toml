@@ -4,6 +4,7 @@ version = "0.2.0"
 edition = "2021"
 authors = ["Daniel Meiborg"]
 license = "MIT OR Apache-2.0"
+description = "A simulation library for a markov chain centered around its entropy at various points in time"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
