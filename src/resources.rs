@@ -15,10 +15,6 @@ impl ResourceName {
     pub fn new() -> Self {
         Self("".to_string())
     }
-
-    pub fn from_str(s: &str) -> Self {
-        Self(s.to_string())
-    }
 }
 
 #[derive(PartialEq, Clone, Debug, Display, From, Default)]

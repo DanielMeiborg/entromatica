@@ -48,10 +48,6 @@ impl EntityName {
     pub fn new() -> Self {
         Self("".to_string())
     }
-
-    pub fn from_str(s: &str) -> Self {
-        Self(s.to_string())
-    }
 }
 
 /// A possible state in the markov chain of the simulation, which is only dependent on
@@ -236,20 +232,20 @@ mod tests {
 
     #[test]
     fn entity_get_resource_should_return_value_on_present_resource() {
-        let resources = vec![(ResourceName::from_str("resource"), Amount::from(1.))];
+        let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
         let entity = Entity::from_vec(resources);
         assert_eq!(
-            entity.resource(&ResourceName::from_str("resource")),
+            entity.resource(&ResourceName::from("resource".to_string())),
             Result::Ok(Amount::from(1.))
         );
     }
 
     #[test]
     fn entity_get_resource_should_return_error_on_missing_resource() {
-        let resources = vec![(ResourceName::from_str("resource"), Amount::from(1.))];
+        let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
         let entity = Entity::from_vec(resources);
         assert_eq!(
-            entity.resource(&ResourceName::from_str("missing_resource")),
+            entity.resource(&ResourceName::from("missing_resource".to_string())),
             Result::Err("Resource \"missing_resource\" not found".to_string())
         );
     }
@@ -257,20 +253,32 @@ mod tests {
     #[test]
     fn state_partial_equal_works_as_expected() {
         let state_a_0 = State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(0.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
         )]);
         let state_a_1 = State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(0.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
         )]);
         let state_b = State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(1.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(1.),
+            )]),
         )]);
         let state_c = State::from_vec(vec![(
-            EntityName::from_str("B"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(1.))]),
+            EntityName::from("B".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(1.),
+            )]),
         )]);
         assert_eq!(state_a_0, state_a_1);
         assert_ne!(state_a_0, state_b);
@@ -281,14 +289,17 @@ mod tests {
     #[test]
     fn state_get_entity_should_return_value_on_present_entity() {
         let state = State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(0.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
         )]);
 
         assert_eq!(
-            state.entity(&EntityName::from_str("A"),),
+            state.entity(&EntityName::from("A".to_string()),),
             Ok(Entity::from_vec(vec![(
-                ResourceName::from_str("Resource"),
+                ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
             )]))
         );
@@ -297,11 +308,14 @@ mod tests {
     #[test]
     fn state_get_entity_should_return_error_on_missing_entity() {
         let state = State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(0.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
         )]);
         assert_eq!(
-            state.entity(&EntityName::from_str("missing_entity")),
+            state.entity(&EntityName::from("missing_entity".to_string())),
             Err("Entity \"missing_entity\" not found".to_string())
         );
     }
@@ -309,14 +323,17 @@ mod tests {
     #[test]
     fn state_get_mut_entity_should_return_value_on_present_entity() {
         let mut state = State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(0.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
         )]);
 
         assert_eq!(
-            state.entity_mut(&EntityName::from_str("A"),),
+            state.entity_mut(&EntityName::from("A".to_string()),),
             Ok(&mut Entity::from_vec(vec![(
-                ResourceName::from_str("Resource"),
+                ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
             )]))
         );
@@ -325,11 +342,14 @@ mod tests {
     #[test]
     fn state_get_mut_entity_should_return_error_on_missing_entity() {
         let mut state = State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(0.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
         )]);
         assert_eq!(
-            state.entity_mut(&EntityName::from_str("missing_entity")),
+            state.entity_mut(&EntityName::from("missing_entity".to_string())),
             Err("Entity \"missing_entity\" not found".to_string())
         );
     }
@@ -337,23 +357,26 @@ mod tests {
     #[test]
     fn apply_actions_should_apply_actions_to_state() {
         let state = State::from_vec(vec![(
-            EntityName::from_str("A"),
+            EntityName::from("A".to_string()),
             Entity::from_vec(vec![
-                (ResourceName::from_str("Resource"), Amount::from(0.)),
-                (ResourceName::from_str("Resource2"), Amount::from(0.)),
+                (ResourceName::from("Resource".to_string()), Amount::from(0.)),
+                (
+                    ResourceName::from("Resource2".to_string()),
+                    Amount::from(0.),
+                ),
             ]),
         )]);
         let actions = vec![
             Action {
                 name: "Action 1".to_string(),
-                resource: ResourceName::from_str("Resource"),
-                entity_name: EntityName::from_str("A"),
+                resource: ResourceName::from("Resource".to_string()),
+                entity_name: EntityName::from("A".to_string()),
                 new_amount: Amount::from(1.),
             },
             Action {
                 name: "Action 2".to_string(),
-                resource: ResourceName::from_str("Resource2"),
-                entity_name: EntityName::from_str("A"),
+                resource: ResourceName::from("Resource2".to_string()),
+                entity_name: EntityName::from("A".to_string()),
                 new_amount: Amount::from(2.),
             },
         ];
@@ -361,10 +384,13 @@ mod tests {
         assert_eq!(
             new_state,
             State::from_vec(vec![(
-                EntityName::from_str("A"),
+                EntityName::from("A".to_string()),
                 Entity::from_vec(vec![
-                    (ResourceName::from_str("Resource"), Amount::from(1.)),
-                    (ResourceName::from_str("Resource2"), Amount::from(2.)),
+                    (ResourceName::from("Resource".to_string()), Amount::from(1.)),
+                    (
+                        ResourceName::from("Resource2".to_string()),
+                        Amount::from(2.)
+                    ),
                 ]),
             )])
         );
@@ -373,10 +399,13 @@ mod tests {
     #[test]
     fn possible_states_append_state() {
         let state = State::from_vec(vec![(
-            EntityName::from_str("A"),
+            EntityName::from("A".to_string()),
             Entity::from_vec(vec![
-                (ResourceName::from_str("Resource"), Amount::from(0.)),
-                (ResourceName::from_str("Resource2"), Amount::from(0.)),
+                (ResourceName::from("Resource".to_string()), Amount::from(0.)),
+                (
+                    ResourceName::from("Resource2".to_string()),
+                    Amount::from(0.),
+                ),
             ]),
         )]);
         let state_hash = StateHash::from_state(&state);
@@ -417,8 +446,11 @@ mod tests {
             .append_state(state_hash, probability)
             .unwrap();
         let state_hash = StateHash::from_state(&State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(0.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
         )]));
         let probability = Probability::from(0.5);
         reachable_states
@@ -437,8 +469,11 @@ mod tests {
             .append_state(state_hash, probability)
             .unwrap();
         let state_hash = StateHash::from_state(&State::from_vec(vec![(
-            EntityName::from_str("A"),
-            Entity::from_vec(vec![(ResourceName::from_str("Resource"), Amount::from(0.))]),
+            EntityName::from("A".to_string()),
+            Entity::from_vec(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
         )]));
         let probability = Probability::from(0.5);
         reachable_states

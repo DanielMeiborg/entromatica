@@ -213,10 +213,6 @@ impl RuleName {
     pub fn new() -> Self {
         Self("".to_string())
     }
-
-    pub fn from_str(s: &str) -> Self {
-        Self(s.to_string())
-    }
 }
 
 #[cfg(test)]
