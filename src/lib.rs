@@ -273,13 +273,20 @@ impl Simulation {
                     .unwrap();
             });
 
-        // TODO: Assert that the cache does not yet contain the cache update
         while let Result::Ok(condition_cache_update) = condition_cache_updates_rx.try_recv() {
             let own_rule_cache = self
                 .cache
                 .rules
                 .get_mut(&condition_cache_update.rule_name)
                 .expect("Rule {rule_name} not found in self.cache");
+            if let Some(update) = own_rule_cache
+                .condition
+                .get(&condition_cache_update.base_state_hash)
+            {
+                if update != &condition_cache_update.applies {
+                    panic!("Condition cache update already exists");
+                }
+            }
             own_rule_cache.condition.insert(
                 condition_cache_update.base_state_hash,
                 condition_cache_update.applies,
@@ -292,6 +299,14 @@ impl Simulation {
                 .rules
                 .get_mut(&action_cache_update.rule_name)
                 .expect("Rule {rule_name} not found in self.cache");
+            if let Some(update) = own_rule_cache
+                .actions
+                .get(&action_cache_update.base_state_hash)
+            {
+                if update != &action_cache_update.new_state_hash {
+                    panic!("Action cache update already exists");
+                }
+            }
             own_rule_cache.actions.insert(
                 action_cache_update.base_state_hash,
                 action_cache_update.new_state_hash,
