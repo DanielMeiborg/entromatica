@@ -321,7 +321,9 @@ mod tests {
         let state = State::new();
         let state_hash = StateHash::from_state(&state);
         let mut possible_states = PossibleStates::new();
-        possible_states.append_state(state_hash, state.clone()).unwrap();
+        possible_states
+            .append_state(state_hash, state.clone())
+            .unwrap();
         cache.rules.insert(rule_name.clone(), RuleCache::new());
         cache
             .rules
