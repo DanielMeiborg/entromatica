@@ -119,6 +119,8 @@ jobs:
 
       - id: check
         run: |
+          chmod +x ./scripts/is_version_already_uploaded.sh
+          chmod +x ./scripts/get_current_version.sh
           set +e
           ./scripts/is_version_already_uploaded.sh entromatica
           export EXIT_CODE="$?"
