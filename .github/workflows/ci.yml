@@ -13,6 +13,7 @@ on:
 env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
+  PACKAGE_NAME: entromatica
 
 jobs:
   ci-everything:
@@ -122,7 +123,7 @@ jobs:
           chmod +x ./scripts/is_version_already_uploaded.sh
           chmod +x ./scripts/get_current_version.sh
           set +e
-          ./scripts/is_version_already_uploaded.sh entromatica
+          ./scripts/is_version_already_uploaded.sh $PACKAGE_NAME
           export EXIT_CODE="$?"
           set -e
           if [[ "$EXIT_CODE" == "7" ]]; then
@@ -136,7 +137,7 @@ jobs:
       - name: Determine the tag name
         id: tag
         run: |
-          export TAG_NAME="v$(./scripts/get_current_version.sh entromatica)"
+          export TAG_NAME="v$(./scripts/get_current_version.sh $PACKAGE_NAME)"
           echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
 
   pre-publish-checks:
@@ -152,10 +153,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check semver
-        uses: obi1kenobi/cargo-semver-checks-action@v1
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
         with:
-          # cargo-semver-checks currently doesn't have a --lib target,
-          # so we explicitly ask for the binary target to be checked instead.
-          # For library crates, you almost always want the default `--lib` value here.
-          crate-target: entromatica
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Check semver
+        run: |
+          chmod +x find_comparison_version.sh
+          cargo install cargo-semver-checks
+          export COMPARE_TO_VERSION="$(./find_comparison_version.sh $PACKAGE_NAME)"
+          cargo semver-checks --compare-to "$COMPARE_TO_VERSION"
