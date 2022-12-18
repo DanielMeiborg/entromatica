@@ -18,7 +18,7 @@ pub struct Action {
     // TODO: name to description i.e. vec to hashmap
     pub name: String,
     pub resource: ResourceName,
-    pub entity: EntityName,
+    pub entity_name: EntityName,
     pub new_amount: Amount,
 }
 
@@ -27,7 +27,7 @@ impl Action {
         Self {
             name: "".to_string(),
             resource: ResourceName::new(),
-            entity: EntityName::new(),
+            entity_name: EntityName::new(),
             new_amount: Amount::new(),
         }
     }
@@ -75,10 +75,6 @@ impl ProbabilityWeight {
     pub fn new() -> Self {
         Self(0.)
     }
-
-    pub fn to_bits(self) -> u64 {
-        self.0.to_bits()
-    }
 }
 
 /// An abstraction over the transition rates of the underlying markov chain.
@@ -118,13 +114,13 @@ impl Rule {
         }
     }
 
-    pub fn applies(&self, state: State) -> RuleApplies {
+    fn applies(&self, state: State) -> RuleApplies {
         (self.condition)(state)
     }
 
-    pub fn apply(&self, state: State, resources: &HashMap<ResourceName, Resource>) -> State {
+    fn apply(&self, state: State) -> State {
         let actions = (self.actions)(state.clone());
-        state.apply_actions(actions, resources)
+        state.apply_actions(actions)
     }
 
     /// Checks if a given rule applies to the given state using or updating the cache respectively.
@@ -132,12 +128,12 @@ impl Rule {
         &self,
         cache: &Cache,
         rule_name: RuleName,
-        base_state_hash: StateHash,
         state: State,
     ) -> (RuleApplies, Option<ConditionCacheUpdate>) {
         if self.probability_weight == ProbabilityWeight(0.) {
             return (RuleApplies(false), None);
         }
+        let base_state_hash = StateHash::from_state(&state);
         let rule_cache = cache
             .rules
             .get(&rule_name)
@@ -162,6 +158,7 @@ impl Rule {
         possible_states: &PossibleStates,
         rule_name: RuleName,
         base_state_hash: StateHash,
+        base_state: State,
         resources: &HashMap<ResourceName, Resource>,
     ) -> (State, Option<ActionCacheUpdate>) {
         let rule_cache = cache
@@ -169,17 +166,18 @@ impl Rule {
             .get(&rule_name)
             .expect("Rule {rule_name} not found in cache");
 
-        if let Some(state_hash) = rule_cache.actions.get(&base_state_hash) {
-            if let Some(new_state) = possible_states.state(state_hash) {
-                return (new_state, None);
-            }
+        if let Some(new_state_hash) = rule_cache.actions.get(&base_state_hash) {
+            return (
+                possible_states
+                    .get(new_state_hash)
+                    .expect("Cached new_state should be in possible states")
+                    .clone(),
+                None,
+            );
         }
-        let base_state = possible_states
-            .state(&base_state_hash)
-            .expect("Base state {base_state_hash} not found in possible_states");
-        let new_state = self.apply(base_state, resources);
+        let new_state = self.apply(base_state);
 
-        Resource::check_resource_capacities(resources, &new_state);
+        Resource::assert_resource_capacities(resources, &new_state);
 
         let new_state_hash = StateHash::from_state(&new_state);
         let cache_update = ActionCacheUpdate {
@@ -214,5 +212,171 @@ impl RuleName {
     #[allow(dead_code)]
     pub fn new() -> Self {
         Self("".to_string())
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn applies_using_cache_should_panic_on_incomplete_cache() {
+        let cache = Cache::new();
+        let rule = Rule::new(
+            "Only for testing purposes".to_string(),
+            |_| RuleApplies(true),
+            ProbabilityWeight(1.),
+            |_| vec![],
+        );
+        let rule_name = RuleName("Test".to_string());
+        let state = State::new();
+        rule.applies_using_cache(&cache, rule_name, state);
+    }
+
+    #[test]
+    fn applies_using_cache_should_return_empty_cache_update_on_found_cache() {
+        let mut cache = Cache::new();
+        let rule = Rule::new(
+            "Only for testing purposes".to_string(),
+            |_| RuleApplies(true),
+            ProbabilityWeight(1.),
+            |_| vec![],
+        );
+        let rule_name = RuleName("Test".to_string());
+        let state = State::new();
+        let state_hash = StateHash::from_state(&state);
+        cache.rules.insert(rule_name.clone(), RuleCache::new());
+        cache
+            .rules
+            .get_mut(&rule_name)
+            .unwrap()
+            .condition
+            .insert(state_hash, RuleApplies(true));
+        let (result, cache_update) = rule.applies_using_cache(&cache, rule_name, state);
+        assert_eq!(result, RuleApplies(true));
+        assert_eq!(cache_update, None);
+    }
+
+    #[test]
+    fn applies_using_cache_should_return_proper_cache_update_on_missing_cache() {
+        let mut cache = Cache::new();
+        let rule = Rule::new(
+            "Only for testing purposes".to_string(),
+            |_| RuleApplies(true),
+            ProbabilityWeight(1.),
+            |_| vec![],
+        );
+        let rule_name = RuleName("Test".to_string());
+        cache
+            .rules
+            .insert(RuleName("Test".to_string()), RuleCache::new());
+        let state = State::new();
+        let (result, cache_update) = rule.applies_using_cache(&cache, rule_name, state.clone());
+        assert_eq!(result, RuleApplies(true));
+        assert_eq!(
+            cache_update,
+            Some(ConditionCacheUpdate {
+                rule_name: RuleName("Test".to_string()),
+                base_state_hash: StateHash::from_state(&state),
+                applies: RuleApplies(true),
+            })
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn apply_using_cache_should_panic_on_incomplete_cache() {
+        let cache = Cache::new();
+        let rule = Rule::new(
+            "Only for testing purposes".to_string(),
+            |_| RuleApplies(true),
+            ProbabilityWeight(1.),
+            |_| vec![],
+        );
+        let rule_name = RuleName("Test".to_string());
+        let state = State::new();
+        let state_hash = StateHash::from_state(&state);
+        let possible_states = PossibleStates::new();
+        rule.apply_using_cache(
+            &cache,
+            &possible_states,
+            rule_name,
+            state_hash,
+            state,
+            &HashMap::new(),
+        );
+    }
+
+    #[test]
+    fn apply_using_cache_should_return_empty_cache_update_on_found_cache() {
+        let mut cache = Cache::new();
+        let rule = Rule::new(
+            "Only for testing purposes".to_string(),
+            |_| RuleApplies(true),
+            ProbabilityWeight(1.),
+            |_| vec![],
+        );
+        let rule_name = RuleName("Test".to_string());
+        let state = State::new();
+        let state_hash = StateHash::from_state(&state);
+        let mut possible_states = PossibleStates::new();
+        possible_states.append_state(state_hash, state.clone()).unwrap();
+        cache.rules.insert(rule_name.clone(), RuleCache::new());
+        cache
+            .rules
+            .get_mut(&rule_name)
+            .unwrap()
+            .actions
+            .insert(state_hash, state_hash);
+        let (result, cache_update) = rule.apply_using_cache(
+            &cache,
+            &possible_states,
+            rule_name,
+            state_hash,
+            state.clone(),
+            &HashMap::new(),
+        );
+        assert_eq!(result, state);
+        assert_eq!(cache_update, None);
+    }
+
+    #[test]
+    fn apply_using_cache_should_return_proper_cache_update_on_missing_cache() {
+        let mut cache = Cache::new();
+        let rule = Rule::new(
+            "Only for testing purposes".to_string(),
+            |_| RuleApplies(true),
+            ProbabilityWeight(1.),
+            |_| vec![],
+        );
+        let rule_name = RuleName("Test".to_string());
+        let state = State::new();
+        let state_hash = StateHash::from_state(&state);
+        let possible_states = PossibleStates::new();
+        cache
+            .rules
+            .insert(RuleName("Test".to_string()), RuleCache::new());
+        let (result, cache_update) = rule.apply_using_cache(
+            &cache,
+            &possible_states,
+            rule_name,
+            state_hash,
+            state.clone(),
+            &HashMap::new(),
+        );
+        assert_eq!(result, state);
+        assert_eq!(
+            cache_update,
+            Some(ActionCacheUpdate {
+                rule_name: RuleName("Test".to_string()),
+                base_state_hash: StateHash::from_state(&state),
+                new_state_hash: StateHash::from_state(&state),
+            })
+        );
     }
 }

@@ -9,16 +9,16 @@ use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use rayon::prelude::*;
 
-mod state;
+pub mod state;
 use state::*;
 
-mod resources;
+pub mod resources;
 use resources::*;
 
-mod units;
+pub mod units;
 use units::*;
 
-mod rules;
+pub mod rules;
 use rules::*;
 
 mod cache;
@@ -154,25 +154,32 @@ impl Simulation {
                 .state(base_state_hash)
                 .expect("Base state {base_state_hash} not found in possible_states");
             let (rule_applies, condition_cache_update) =
-                rule.applies_using_cache(&self.cache, rule_name.clone(), *base_state_hash, state);
+                rule.applies_using_cache(&self.cache, rule_name.clone(), state);
             if let Some(cache) = condition_cache_update {
                 condition_cache_updates.push(cache);
             }
             if rule_applies.is_true() {
                 new_base_state_probability *= 1. - f64::from(rule.probability_weight);
                 applying_rules_probability_weight_sum += rule.probability_weight;
+                let base_state = self
+                    .possible_states
+                    .state(base_state_hash)
+                    .expect("Base state not found in possible_states");
                 let (new_state, action_cache_update) = rule.apply_using_cache(
                     &self.cache,
                     &self.possible_states,
                     rule_name.clone(),
                     *base_state_hash,
+                    base_state,
                     &self.resources,
                 );
                 if let Some(cache) = action_cache_update {
                     action_cache_updates.push(cache);
                 }
                 let new_state_hash = StateHash::from_state(&new_state);
-                new_possible_states.append_state(new_state_hash, new_state);
+                new_possible_states
+                    .append_state(new_state_hash, new_state)
+                    .expect("State {state_hash} already exists in possible_states");
                 reachable_states_from_base_state_by_rule_probability_weight
                     .insert(new_state_hash, rule.probability_weight);
             }
@@ -181,7 +188,9 @@ impl Simulation {
         let mut new_reachable_states = ReachableStates::new();
 
         if new_base_state_probability > Probability(0.) {
-            new_reachable_states.append_state(*base_state_hash, new_base_state_probability);
+            new_reachable_states
+                .append_state(*base_state_hash, new_base_state_probability)
+                .unwrap();
         }
 
         let probabilities_for_reachable_states_from_base_state =
@@ -195,7 +204,9 @@ impl Simulation {
         probabilities_for_reachable_states_from_base_state
             .iter()
             .for_each(|(new_state_hash, new_state_probability)| {
-                new_reachable_states.append_state(*new_state_hash, *new_state_probability);
+                new_reachable_states
+                    .append_state(*new_state_hash, *new_state_probability)
+                    .unwrap();
             });
         (
             new_reachable_states,
@@ -254,8 +265,12 @@ impl Simulation {
                 for cache_update in action_cache_update {
                     action_cache_updates_tx.send(cache_update).unwrap();
                 }
-                self.possible_states.append_states(&new_possible_states);
-                self.reachable_states.append_states(&new_reachable_states);
+                self.possible_states
+                    .append_states(&new_possible_states)
+                    .expect("Possible states already exist");
+                self.reachable_states
+                    .append_states(&new_reachable_states)
+                    .unwrap();
             });
 
         // TODO: Assert that the cache does not yet contain the cache update
