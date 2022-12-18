@@ -164,7 +164,5 @@ jobs:
 
       - name: Check semver
         run: |
-          chmod +x ./scripts/find_comparison_version.sh
           cargo install cargo-semver-checks
-          export COMPARE_TO_VERSION="$(./scripts/find_comparison_version.sh $PACKAGE_NAME)"
-          cargo semver-checks check-release "$COMPARE_TO_VERSION"
+          cargo semver-checks check-release
