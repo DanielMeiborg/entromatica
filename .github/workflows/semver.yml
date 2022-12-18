@@ -1,0 +1,10 @@
+on: [push, pull_request]
+
+name: Semver Checks
+
+jobs:
+  semver-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check semver
+        uses: obi1kenobi/cargo-semver-checks-action@v1
