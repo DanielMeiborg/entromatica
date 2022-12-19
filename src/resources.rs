@@ -140,7 +140,7 @@ mod tests {
                 "Gold".to_string(),
                 Capacity::Limited(Amount::from(10.)),
                 Capacity::Unlimited,
-        ),
+            ),
         )]);
         let state = State::from_entities(vec![(
             EntityName::from("Someone".to_string()),
@@ -180,11 +180,7 @@ mod tests {
     fn assert_resource_capacities_should_panic_on_negative_amounts() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
-            Resource::from(
-                "Gold".to_string(),
-                Capacity::Unlimited,
-                Capacity::Unlimited,
-            ),
+            Resource::from("Gold".to_string(), Capacity::Unlimited, Capacity::Unlimited),
         )]);
 
         let state = State::from_entities(vec![(

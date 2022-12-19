@@ -292,8 +292,7 @@ impl Simulation {
 
     ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
     pub fn get_graph(&self) -> Graph<State, RuleName> {
-        self.cache
-            .get_graph(self.possible_states.clone())
+        self.cache.get_graph(self.possible_states.clone())
     }
 
     /// Checks if the uniform distribution is a steady state i.e. if the transition rate matrix is doubly statistical.
