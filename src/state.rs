@@ -10,14 +10,13 @@ use derive_more::*;
 use rayon::prelude::*;
 
 use crate::resources::*;
+use crate::rules::*;
 use crate::units::*;
-
-use crate::rules::Action;
 
 /// A single entity in the simulation.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Entity {
-    pub resources: HashMap<ResourceName, Amount>,
+    resources: HashMap<ResourceName, Amount>,
 }
 
 impl Entity {
@@ -27,7 +26,7 @@ impl Entity {
         }
     }
 
-    pub fn from_vec(resources: Vec<(ResourceName, Amount)>) -> Self {
+    pub fn from_resources(resources: Vec<(ResourceName, Amount)>) -> Self {
         Self {
             resources: resources.into_iter().collect(),
         }
@@ -54,7 +53,7 @@ impl EntityName {
 /// the configuration of the entities in the simulation.
 #[derive(Clone, Debug, Default, From, Into)]
 pub struct State {
-    pub entities: HashMap<EntityName, Entity>,
+    entities: HashMap<EntityName, Entity>,
 }
 
 impl Hash for State {
@@ -86,7 +85,7 @@ impl State {
         }
     }
 
-    pub fn from_vec(entities: Vec<(EntityName, Entity)>) -> Self {
+    pub fn from_entities(entities: Vec<(EntityName, Entity)>) -> Self {
         Self {
             entities: entities.into_iter().collect(),
         }
@@ -105,23 +104,27 @@ impl State {
             .ok_or(format!("Entity \"{entity_name}\" not found"))
     }
 
+    pub fn iter_entities(&self) -> impl Iterator<Item = (&EntityName, &Entity)> {
+        self.entities.iter()
+    }
+
     // TODO: check for multiple actions applying to one resource
-    pub(crate) fn apply_actions(&self, actions: Vec<Action>) -> State {
+    pub(crate) fn apply_actions(&self, actions: HashMap<ActionName, Action>) -> State {
         let mut new_state = self.clone();
-        for action in actions {
+        for (_, action) in actions {
             new_state
                 .entities
-                .get_mut(&action.entity_name)
+                .get_mut(&action.target())
                 .expect("Entity {action.entity} not found in state")
                 .resources
-                .insert(action.resource.clone(), action.new_amount);
+                .insert(action.resource(), action.amount());
         }
         new_state
     }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Display, Default)]
-pub struct StateHash(pub u64);
+pub struct StateHash(u64);
 
 impl StateHash {
     pub fn new() -> Self {
@@ -136,7 +139,7 @@ impl StateHash {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, From, Into, AsRef, AsMut, Index, Deref)]
-pub struct PossibleStates(pub HashMap<StateHash, State>);
+pub struct PossibleStates(HashMap<StateHash, State>);
 
 impl PossibleStates {
     pub fn new() -> Self {
@@ -165,10 +168,14 @@ impl PossibleStates {
     pub fn state(&self, state_hash: &StateHash) -> Option<State> {
         self.0.get(state_hash).cloned()
     }
+
+    pub fn iter(&self) -> hashbrown::hash_map::Iter<StateHash, State> {
+        self.0.iter()
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Default, From, Into, AsRef, AsMut, Index, Deref)]
-pub struct ReachableStates(pub HashMap<StateHash, Probability>);
+pub struct ReachableStates(HashMap<StateHash, Probability>);
 
 impl ReachableStates {
     pub fn new() -> Self {
@@ -206,22 +213,26 @@ impl ReachableStates {
     }
 
     pub fn probability_sum(&self) -> Probability {
-        Probability(self.par_iter().map(|(_, probability)| probability.0).sum())
+        Probability::from(
+            self.par_iter()
+                .map(|(_, probability)| probability.to_f64())
+                .sum::<f64>(),
+        )
     }
 
     /// Gets the entropy of the current probability distribution.
     pub fn entropy(&self) -> Entropy {
-        Entropy(
+        Entropy::from(
             self.0
                 .par_iter()
                 .map(|(_, probability)| {
-                    if *probability > Probability(0.) {
+                    if *probability > Probability::from(0.) {
                         f64::from(*probability) * -f64::from(*probability).log2()
                     } else {
                         0.
                     }
                 })
-                .sum(),
+                .sum::<f64>(),
         )
     }
 }
@@ -233,7 +244,7 @@ mod tests {
     #[test]
     fn entity_get_resource_should_return_value_on_present_resource() {
         let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
-        let entity = Entity::from_vec(resources);
+        let entity = Entity::from_resources(resources);
         assert_eq!(
             entity.resource(&ResourceName::from("resource".to_string())),
             Result::Ok(Amount::from(1.))
@@ -243,7 +254,7 @@ mod tests {
     #[test]
     fn entity_get_resource_should_return_error_on_missing_resource() {
         let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
-        let entity = Entity::from_vec(resources);
+        let entity = Entity::from_resources(resources);
         assert_eq!(
             entity.resource(&ResourceName::from("missing_resource".to_string())),
             Result::Err("Resource \"missing_resource\" not found".to_string())
@@ -252,30 +263,30 @@ mod tests {
 
     #[test]
     fn state_partial_equal_works_as_expected() {
-        let state_a_0 = State::from_vec(vec![(
+        let state_a_0 = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.),
             )]),
         )]);
-        let state_a_1 = State::from_vec(vec![(
+        let state_a_1 = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.),
             )]),
         )]);
-        let state_b = State::from_vec(vec![(
+        let state_b = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(1.),
             )]),
         )]);
-        let state_c = State::from_vec(vec![(
+        let state_c = State::from_entities(vec![(
             EntityName::from("B".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(1.),
             )]),
@@ -288,9 +299,9 @@ mod tests {
 
     #[test]
     fn state_get_entity_should_return_value_on_present_entity() {
-        let state = State::from_vec(vec![(
+        let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.),
             )]),
@@ -298,7 +309,7 @@ mod tests {
 
         assert_eq!(
             state.entity(&EntityName::from("A".to_string()),),
-            Ok(Entity::from_vec(vec![(
+            Ok(Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
             )]))
@@ -307,9 +318,9 @@ mod tests {
 
     #[test]
     fn state_get_entity_should_return_error_on_missing_entity() {
-        let state = State::from_vec(vec![(
+        let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.),
             )]),
@@ -322,9 +333,9 @@ mod tests {
 
     #[test]
     fn state_get_mut_entity_should_return_value_on_present_entity() {
-        let mut state = State::from_vec(vec![(
+        let mut state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.),
             )]),
@@ -332,7 +343,7 @@ mod tests {
 
         assert_eq!(
             state.entity_mut(&EntityName::from("A".to_string()),),
-            Ok(&mut Entity::from_vec(vec![(
+            Ok(&mut Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
             )]))
@@ -341,9 +352,9 @@ mod tests {
 
     #[test]
     fn state_get_mut_entity_should_return_error_on_missing_entity() {
-        let mut state = State::from_vec(vec![(
+        let mut state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.),
             )]),
@@ -356,9 +367,9 @@ mod tests {
 
     #[test]
     fn apply_actions_should_apply_actions_to_state() {
-        let state = State::from_vec(vec![(
+        let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![
+            Entity::from_resources(vec![
                 (ResourceName::from("Resource".to_string()), Amount::from(0.)),
                 (
                     ResourceName::from("Resource2".to_string()),
@@ -366,26 +377,30 @@ mod tests {
                 ),
             ]),
         )]);
-        let actions = vec![
-            Action {
-                name: "Action 1".to_string(),
-                resource: ResourceName::from("Resource".to_string()),
-                entity_name: EntityName::from("A".to_string()),
-                new_amount: Amount::from(1.),
-            },
-            Action {
-                name: "Action 2".to_string(),
-                resource: ResourceName::from("Resource2".to_string()),
-                entity_name: EntityName::from("A".to_string()),
-                new_amount: Amount::from(2.),
-            },
-        ];
+        let actions = HashMap::from([
+            (
+                ActionName::from("Action 1".to_string()),
+                Action::from(
+                    ResourceName::from("Resource".to_string()),
+                    EntityName::from("A".to_string()),
+                    Amount::from(1.),
+                ),
+            ),
+            (
+                ActionName::from("Action 2".to_string()),
+                Action::from(
+                    ResourceName::from("Resource2".to_string()),
+                    EntityName::from("A".to_string()),
+                    Amount::from(2.),
+                ),
+            ),
+        ]);
         let new_state = state.apply_actions(actions);
         assert_eq!(
             new_state,
-            State::from_vec(vec![(
+            State::from_entities(vec![(
                 EntityName::from("A".to_string()),
-                Entity::from_vec(vec![
+                Entity::from_resources(vec![
                     (ResourceName::from("Resource".to_string()), Amount::from(1.)),
                     (
                         ResourceName::from("Resource2".to_string()),
@@ -398,9 +413,9 @@ mod tests {
 
     #[test]
     fn possible_states_append_state() {
-        let state = State::from_vec(vec![(
+        let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![
+            Entity::from_resources(vec![
                 (ResourceName::from("Resource".to_string()), Amount::from(0.)),
                 (
                     ResourceName::from("Resource2".to_string()),
@@ -445,9 +460,9 @@ mod tests {
         reachable_states
             .append_state(state_hash, probability)
             .unwrap();
-        let state_hash = StateHash::from_state(&State::from_vec(vec![(
+        let state_hash = StateHash::from_state(&State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.),
             )]),
@@ -468,9 +483,9 @@ mod tests {
         reachable_states
             .append_state(state_hash, probability)
             .unwrap();
-        let state_hash = StateHash::from_state(&State::from_vec(vec![(
+        let state_hash = StateHash::from_state(&State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_vec(vec![(
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.),
             )]),
