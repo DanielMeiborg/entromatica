@@ -9,7 +9,7 @@ use crate::state::*;
 use crate::units::*;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, AsRef, AsMut, Into)]
-pub struct ResourceName(pub String);
+pub struct ResourceName(String);
 
 impl ResourceName {
     pub fn new() -> Self {
@@ -42,9 +42,9 @@ impl Capacity {
 /// This can again be unlimited.
 #[derive(PartialEq, Clone, Debug, Default, From, Into)]
 pub struct Resource {
-    pub description: String,
-    pub capacity: Capacity,
-    pub capacity_per_entity: Capacity,
+    description: String,
+    capacity: Capacity,
+    capacity_per_entity: Capacity,
 }
 
 impl Resource {
@@ -56,6 +56,14 @@ impl Resource {
         }
     }
 
+    pub fn from(description: String, capacity: Capacity, capacity_per_entity: Capacity) -> Self {
+        Self {
+            description,
+            capacity,
+            capacity_per_entity,
+        }
+    }
+
     /// Checks if the given state satisfies all resource constrains.
     pub(crate) fn assert_resource_capacities(
         resources: &HashMap<ResourceName, Resource>,
@@ -64,19 +72,18 @@ impl Resource {
         for (resource_name, resource) in resources {
             match &resource.capacity {
                 Capacity::Limited(limit) => {
-                    let mut total_amount = Amount(0.);
-                    for (entity_name, entity) in &state.entities {
+                    let mut total_amount = Amount::from(0.);
+                    for (entity_name, entity) in state.iter_entities() {
                         let entity_amount = entity
-                            .resources
-                            .get(resource_name)
+                            .resource(resource_name)
                             .expect("Entity {entity_name} does not have resource {resource_name}");
-                        if *entity_amount < Amount(0.) {
+                        if entity_amount < Amount::from(0.) {
                             panic!(
                                 "Entity {} has negative amount of resource {}",
                                 entity_name, resource_name
                             );
                         }
-                        total_amount += *entity_amount;
+                        total_amount += entity_amount;
                         if total_amount > *limit {
                             panic!(
                                 "Resource limit exceeded for resource {resource_name}",
@@ -86,12 +93,11 @@ impl Resource {
                     }
                 }
                 Capacity::Unlimited => {
-                    for (entity_name, entity) in &state.entities {
+                    for (entity_name, entity) in state.iter_entities() {
                         let entity_amount = entity
-                            .resources
-                            .get(resource_name)
+                            .resource(resource_name)
                             .expect("Entity {entity_name} does not have resource {resource_name}");
-                        if *entity_amount < Amount(0.) {
+                        if entity_amount < Amount::from(0.) {
                             panic!(
                                 "Entity {} has negative amount of resource {}",
                                 entity_name, resource_name
@@ -103,12 +109,11 @@ impl Resource {
 
             match &resource.capacity_per_entity {
                 Capacity::Limited(limit) => {
-                    for (entity_name, entity) in &state.entities {
+                    for (entity_name, entity) in state.iter_entities() {
                         let entity_amount = entity
-                            .resources
-                            .get(resource_name)
+                            .resource(resource_name)
                             .expect("Entity {entity_name} does not have resource {resource_name}");
-                        if *entity_amount > *limit {
+                        if entity_amount > *limit {
                             panic!(
                                 "Entity {} has exceeded resource limit for resource {}",
                                 entity_name, resource_name
@@ -131,23 +136,19 @@ mod tests {
     fn assert_resource_capacities_should_pass_on_maintained_limit() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
-            Resource {
-                description: "Gold".to_string(),
-                capacity: Capacity::Limited(Amount(10.)),
-                capacity_per_entity: Capacity::Unlimited,
-            },
+            Resource::from(
+                "Gold".to_string(),
+                Capacity::Limited(Amount::from(10.)),
+                Capacity::Unlimited,
+            ),
         )]);
-        let state = State {
-            entities: HashMap::from([(
-                EntityName::from("Someone".to_string()),
-                Entity {
-                    resources: HashMap::from([(
-                        ResourceName::from("Gold".to_string()),
-                        Amount(5.),
-                    )]),
-                },
+        let state = State::from_entities(vec![(
+            EntityName::from("Someone".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("Gold".to_string()),
+                Amount::from(5.),
             )]),
-        };
+        )]);
 
         Resource::assert_resource_capacities(&resources, &state);
     }
@@ -156,23 +157,20 @@ mod tests {
     fn assert_resource_capacities_should_pass_on_maintained_entity_limit() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
-            Resource {
-                description: "Gold".to_string(),
-                capacity: Capacity::Unlimited,
-                capacity_per_entity: Capacity::Limited(Amount(10.)),
-            },
+            Resource::from(
+                "Gold".to_string(),
+                Capacity::Unlimited,
+                Capacity::Limited(Amount::from(10.)),
+            ),
         )]);
-        let state = State {
-            entities: HashMap::from([(
-                EntityName::from("Someone".to_string()),
-                Entity {
-                    resources: HashMap::from([(
-                        ResourceName::from("Gold".to_string()),
-                        Amount(5.),
-                    )]),
-                },
+
+        let state = State::from_entities(vec![(
+            EntityName::from("Someone".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("Gold".to_string()),
+                Amount::from(5.),
             )]),
-        };
+        )]);
 
         Resource::assert_resource_capacities(&resources, &state);
     }
@@ -182,23 +180,16 @@ mod tests {
     fn assert_resource_capacities_should_panic_on_negative_amounts() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
-            Resource {
-                description: "Gold".to_string(),
-                capacity: Capacity::Unlimited,
-                capacity_per_entity: Capacity::Unlimited,
-            },
+            Resource::from("Gold".to_string(), Capacity::Unlimited, Capacity::Unlimited),
         )]);
-        let state = State {
-            entities: HashMap::from([(
-                EntityName::from("Someone".to_string()),
-                Entity {
-                    resources: HashMap::from([(
-                        ResourceName::from("Gold".to_string()),
-                        Amount(-1.),
-                    )]),
-                },
+
+        let state = State::from_entities(vec![(
+            EntityName::from("Someone".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("Gold".to_string()),
+                Amount::from(-1.),
             )]),
-        };
+        )]);
 
         Resource::assert_resource_capacities(&resources, &state);
     }
@@ -208,23 +199,20 @@ mod tests {
     fn assert_resource_capacities_should_panic_on_exceeded_limit() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
-            Resource {
-                description: "Gold".to_string(),
-                capacity: Capacity::Limited(Amount(10.)),
-                capacity_per_entity: Capacity::Unlimited,
-            },
+            Resource::from(
+                "Gold".to_string(),
+                Capacity::Limited(Amount::from(10.)),
+                Capacity::Unlimited,
+            ),
         )]);
-        let state = State {
-            entities: HashMap::from([(
-                EntityName::from("Someone".to_string()),
-                Entity {
-                    resources: HashMap::from([(
-                        ResourceName::from("Gold".to_string()),
-                        Amount(11.),
-                    )]),
-                },
+
+        let state = State::from_entities(vec![(
+            EntityName::from("Someone".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("Gold".to_string()),
+                Amount::from(11.),
             )]),
-        };
+        )]);
 
         Resource::assert_resource_capacities(&resources, &state);
     }
@@ -234,34 +222,33 @@ mod tests {
     fn assert_resource_capacities_should_panic_on_exceeded_entity_limit() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
-            Resource {
-                description: "Gold".to_string(),
-                capacity: Capacity::Unlimited,
-                capacity_per_entity: Capacity::Limited(Amount(10.)),
-            },
+            Resource::from(
+                "Gold".to_string(),
+                Capacity::Unlimited,
+                Capacity::Limited(Amount::from(10.)),
+            ),
         )]);
-        let state = State {
-            entities: HashMap::from([
+
+        let state = State::from_entities(
+            vec![
                 (
                     EntityName::from("Someone".to_string()),
-                    Entity {
-                        resources: HashMap::from([(
-                            ResourceName::from("Gold".to_string()),
-                            Amount(11.),
-                        )]),
-                    },
+                    Entity::from_resources(vec![(
+                        ResourceName::from("Gold".to_string()),
+                        Amount::from(11.),
+                    )]),
                 ),
                 (
                     EntityName::from("SomeoneElse".to_string()),
-                    Entity {
-                        resources: HashMap::from([(
-                            ResourceName::from("Gold".to_string()),
-                            Amount(9.),
-                        )]),
-                    },
+                    Entity::from_resources(vec![(
+                        ResourceName::from("Gold".to_string()),
+                        Amount::from(9.),
+                    )]),
                 ),
-            ]),
-        };
+            ]
+            .into_iter()
+            .collect(),
+        );
 
         Resource::assert_resource_capacities(&resources, &state);
     }
@@ -273,14 +260,12 @@ mod tests {
             ResourceName::from("nonexistium".to_string()),
             Resource::new(),
         )]);
-        let state = State {
-            entities: HashMap::from([(
-                EntityName::from("Someone".to_string()),
-                Entity {
-                    resources: HashMap::new(),
-                },
-            )]),
-        };
+
+        let state = State::from_entities(vec![(
+            EntityName::from("Someone".to_string()),
+            Entity::from_resources(vec![]),
+        )]);
+
         Resource::assert_resource_capacities(&resources, &state);
     }
 }

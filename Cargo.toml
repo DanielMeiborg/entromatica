@@ -1,10 +1,10 @@
 [package]
 name = "entromatica"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Daniel Meiborg"]
 license = "MIT OR Apache-2.0"
-description = "A simulation library for a markov chain centered around its entropy at various points in time"
+description = "A simulation library for markov chain with uniform steady state distributions centered around their entropy"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
