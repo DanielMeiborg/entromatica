@@ -68,7 +68,6 @@ impl ActionName {
     Default,
     Debug,
     Display,
-    From,
     Into,
     AsRef,
     AsMut,
@@ -96,6 +95,15 @@ impl Hash for ProbabilityWeight {
 impl PartialEq for ProbabilityWeight {
     fn eq(&self, other: &Self) -> bool {
         self.0.to_bits() == other.0.to_bits()
+    }
+}
+
+impl From<f64> for ProbabilityWeight {
+    fn from(value: f64) -> Self {
+        if value < 0. {
+            panic!("ProbabilityWeight cannot be negative");
+        }
+        Self(value)
     }
 }
 

@@ -82,14 +82,23 @@ impl Simulation {
     }
 
     /// Creates a new simulation with the given resources, initial state and rules.
-    pub fn create(
+    pub fn from(
         resources: HashMap<ResourceName, Resource>,
         initial_state: State,
         rules: HashMap<RuleName, Rule>,
-    ) -> Simulation {
+    ) -> Result<Simulation, String> {
         let initial_state_hash = StateHash::from_state(&initial_state);
+        for (entity_name, entity) in initial_state.iter_entities() {
+            for (resource_name, _) in entity.iter_resources() {
+                if !resources.contains_key(resource_name) {
+                    return Err(format!(
+                        "Resource {resource_name} of entity {entity_name} not found in resources",
+                    ));
+                }
+            }
+        }
 
-        Simulation {
+        Ok(Simulation {
             resources,
             initial_state: initial_state.clone(),
             possible_states: PossibleStates::from(HashMap::from([(
@@ -104,7 +113,7 @@ impl Simulation {
             time: Time::from(0),
             entropy: Entropy::from(0.),
             cache: Cache::new(),
-        }
+        })
     }
 
     /// Runs the simulation for one timestep.
@@ -288,17 +297,18 @@ impl Simulation {
     }
 
     /// Checks if the uniform distribution is a steady state i.e. if the transition rate matrix is doubly statistical.
-    pub fn is_doubly_statistical(&self) -> bool {
-        let mut simulation = Simulation::create(
+    pub fn is_doubly_statistical(&self) -> Result<bool, String> {
+        let mut simulation = Simulation::from(
             self.resources.clone(),
             self.initial_state.clone(),
             self.rules.clone(),
-        );
+        )?;
         let mut current_reachable_states = simulation.reachable_states.clone();
         while current_reachable_states.len() != self.reachable_states.len()
             && current_reachable_states
-                .keys()
-                .all(|state_hash| self.reachable_states.contains_key(state_hash))
+                .iter()
+                .map(|(state_hash, _)| state_hash)
+                .all(|state_hash| self.reachable_states.contains(state_hash))
         {
             current_reachable_states = simulation.reachable_states.clone();
             simulation.next_step();
@@ -315,6 +325,8 @@ impl Simulation {
         let uniform_entropy = uniform_simulation.reachable_states.entropy();
         uniform_simulation.next_step();
         let uniform_entropy_after_step = uniform_simulation.reachable_states.entropy();
-        uniform_entropy == uniform_entropy_after_step
+        Ok(uniform_entropy == uniform_entropy_after_step)
     }
 }
+
+// TODO: Add tests

@@ -38,6 +38,20 @@ impl Entity {
             .copied()
             .ok_or(format!("Resource \"{resource_name}\" not found"))
     }
+
+    pub fn resource_mut(&mut self, resource_name: &ResourceName) -> Result<&mut Amount, String> {
+        self.resources
+            .get_mut(resource_name)
+            .ok_or(format!("Resource \"{resource_name}\" not found"))
+    }
+
+    pub fn iter_resources(&self) -> impl Iterator<Item = (&ResourceName, &Amount)> {
+        self.resources.iter()
+    }
+
+    pub fn iter_resources_mut(&mut self) -> impl Iterator<Item = (&ResourceName, &mut Amount)> {
+        self.resources.iter_mut()
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut, Deref)]
@@ -108,6 +122,10 @@ impl State {
         self.entities.iter()
     }
 
+    pub fn iter_entities_mut(&mut self) -> impl Iterator<Item = (&EntityName, &mut Entity)> {
+        self.entities.iter_mut()
+    }
+
     // TODO: check for multiple actions applying to one resource
     pub(crate) fn apply_actions(&self, actions: HashMap<ActionName, Action>) -> State {
         let mut new_state = self.clone();
@@ -159,7 +177,7 @@ impl PossibleStates {
     }
 
     pub(crate) fn append_states(&mut self, states: &PossibleStates) -> Result<(), String> {
-        for (state_hash, state) in states.0.iter() {
+        for (state_hash, state) in states.iter() {
             self.append_state(*state_hash, state.clone())?;
         }
         Ok(())
@@ -174,7 +192,7 @@ impl PossibleStates {
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Default, From, Into, AsRef, AsMut, Index, Deref)]
+#[derive(Clone, PartialEq, Debug, Default, From, Into, AsRef, AsMut, Index)]
 pub struct ReachableStates(HashMap<StateHash, Probability>);
 
 impl ReachableStates {
@@ -212,9 +230,30 @@ impl ReachableStates {
         self.0.values().cloned()
     }
 
+    pub fn iter(&self) -> hashbrown::hash_map::Iter<StateHash, Probability> {
+        self.0.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> hashbrown::hash_map::IterMut<StateHash, Probability> {
+        self.0.iter_mut()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn contains(&self, state_hash: &StateHash) -> bool {
+        self.0.contains_key(state_hash)
+    }
+
     pub fn probability_sum(&self) -> Probability {
         Probability::from(
-            self.par_iter()
+            self.iter()
+                .par_bridge()
                 .map(|(_, probability)| probability.to_f64())
                 .sum::<f64>(),
         )

@@ -11,7 +11,6 @@ use crate::rules::ProbabilityWeight;
     Default,
     Debug,
     Display,
-    From,
     Into,
     AsRef,
     AsMut,
@@ -42,6 +41,15 @@ impl PartialEq for Amount {
     }
 }
 
+impl From<f64> for Amount {
+    fn from(amount: f64) -> Self {
+        if amount < 0. {
+            panic!("Amount cannot be negative");
+        }
+        Self(amount)
+    }
+}
+
 impl Amount {
     pub fn new() -> Self {
         Self(0.)
@@ -55,7 +63,6 @@ impl Amount {
     Default,
     Debug,
     Display,
-    From,
     Into,
     AsRef,
     AsMut,
@@ -86,6 +93,15 @@ impl PartialEq for Entropy {
     }
 }
 
+impl From<f64> for Entropy {
+    fn from(entropy: f64) -> Self {
+        if entropy < 0. {
+            panic!("Entropy cannot be negative");
+        }
+        Self(entropy)
+    }
+}
+
 impl Entropy {
     pub fn new() -> Self {
         Self(0.)
@@ -99,7 +115,6 @@ impl Entropy {
     Default,
     Debug,
     Display,
-    From,
     Into,
     AsRef,
     AsMut,
@@ -130,6 +145,15 @@ impl PartialEq for Probability {
     }
 }
 
+impl From<f64> for Probability {
+    fn from(probability: f64) -> Self {
+        if !(0. ..=1.).contains(&probability) {
+            panic!("Probability must be between 0 and 1");
+        }
+        Self(probability)
+    }
+}
+
 impl Probability {
     pub fn new() -> Self {
         Self(0.)
@@ -145,6 +169,7 @@ impl Probability {
 }
 
 #[derive(
+    Hash,
     PartialEq,
     Eq,
     PartialOrd,
@@ -154,7 +179,6 @@ impl Probability {
     Default,
     Debug,
     Display,
-    From,
     Into,
     AsRef,
     AsMut,
@@ -172,6 +196,15 @@ impl Probability {
     RemAssign,
 )]
 pub struct Time(i64);
+
+impl From<i64> for Time {
+    fn from(time: i64) -> Self {
+        if time < 0 {
+            panic!("Time cannot be negative");
+        }
+        Self(time)
+    }
+}
 
 impl Time {
     pub fn new() -> Self {
