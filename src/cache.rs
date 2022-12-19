@@ -142,7 +142,7 @@ impl Cache {
     }
 
     ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
-    pub fn get_graph_from_cache(&self, possible_states: PossibleStates) -> Graph<State, RuleName> {
+    pub fn get_graph(&self, possible_states: PossibleStates) -> Graph<State, RuleName> {
         let mut graph = Graph::<State, RuleName>::new();
         let mut nodes: HashMap<StateHash, NodeIndex> = HashMap::new();
         for (state_hash, state) in possible_states.iter() {
@@ -220,3 +220,116 @@ impl ActionCacheUpdate {
 }
 
 // TODO: Add tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resources::*;
+    use crate::units::*;
+
+    #[test]
+    fn cache_add_should_work() {
+        let mut cache = Cache::new();
+        let rule_name = RuleName::from("test".to_string());
+        let base_state_hash = StateHash::new();
+        let new_state_hash = StateHash::new();
+        let applies = RuleApplies::from(true);
+        cache
+            .add_condition(rule_name.clone(), base_state_hash, applies)
+            .unwrap();
+        cache
+            .add_action(rule_name.clone(), base_state_hash, new_state_hash)
+            .unwrap();
+        assert_eq!(cache.condition(&rule_name, &base_state_hash), Some(applies));
+        assert_eq!(
+            cache.action(&rule_name, &base_state_hash),
+            Some(new_state_hash)
+        );
+    }
+
+    #[test]
+    fn cache_no_overwriting_values() {
+        let mut cache = Cache::new();
+        let rule_name = RuleName::from("test".to_string());
+        let base_state_hash = StateHash::new();
+        let new_state_hash = StateHash::new();
+        let applies = RuleApplies::from(true);
+        cache
+            .add_condition(rule_name.clone(), base_state_hash, applies)
+            .unwrap();
+        cache
+            .add_action(rule_name.clone(), base_state_hash, new_state_hash)
+            .unwrap();
+        let new_new_state_hash = StateHash::from_state(&State::from_entities(vec![(
+            EntityName::from("A".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
+        )]));
+        let new_applies = RuleApplies::from(false);
+        cache
+            .add_condition(rule_name.clone(), base_state_hash, new_applies)
+            .unwrap_err();
+        cache
+            .add_action(rule_name.clone(), base_state_hash, new_new_state_hash)
+            .unwrap_err();
+        assert_eq!(cache.condition(&rule_name, &base_state_hash), Some(applies));
+        assert_eq!(
+            cache.action(&rule_name, &base_state_hash),
+            Some(new_state_hash)
+        );
+    }
+
+    #[test]
+    fn cache_apply_updates() {
+        let mut cache = Cache::new();
+        let rule_name = RuleName::from("test".to_string());
+        let base_state_hash = StateHash::new();
+        let new_state_hash = StateHash::new();
+        let applies = RuleApplies::from(true);
+        let condition_update =
+            ConditionCacheUpdate::from(rule_name.clone(), base_state_hash, applies);
+        let action_update =
+            ActionCacheUpdate::from(rule_name.clone(), base_state_hash, new_state_hash);
+        cache.apply_condition_update(condition_update).unwrap();
+        cache.apply_action_update(action_update).unwrap();
+        assert_eq!(cache.condition(&rule_name, &base_state_hash), Some(applies));
+        assert_eq!(
+            cache.action(&rule_name, &base_state_hash),
+            Some(new_state_hash)
+        );
+    }
+
+    #[test]
+    fn cache_get_graph() {
+        let mut cache = Cache::new();
+        let rule_name = RuleName::from("test".to_string());
+        let base_state = State::new();
+        let base_state_hash = StateHash::from_state(&base_state);
+        let new_state = State::from_entities(vec![(
+            EntityName::from("A".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("Resource".to_string()),
+                Amount::from(0.),
+            )]),
+        )]);
+        let new_state_hash = StateHash::from_state(&new_state);
+        let applies = RuleApplies::from(true);
+        let possible_states = PossibleStates::from(HashMap::from([
+            (base_state_hash, base_state.clone()),
+            (new_state_hash, new_state.clone()),
+        ]));
+        cache
+            .add_condition(rule_name.clone(), base_state_hash, applies)
+            .unwrap();
+        cache
+            .add_action(rule_name, base_state_hash, new_state_hash)
+            .unwrap();
+
+        let graph = cache.get_graph(possible_states);
+        assert_eq!(graph.node_count(), 2);
+        assert_eq!(graph.edge_count(), 1);
+        assert_eq!(graph.raw_nodes()[0].weight, base_state);
+        assert_eq!(graph.raw_nodes()[1].weight, new_state);
+    }
+}
