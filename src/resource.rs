@@ -5,6 +5,7 @@ use hashbrown::{HashMap, HashSet};
 #[allow(unused_imports)]
 use itertools::Itertools;
 
+use crate::error::*;
 use crate::state::*;
 use crate::units::*;
 
@@ -65,43 +66,45 @@ impl Resource {
     }
 
     /// Checks if the given state satisfies all resource constrains.
-    pub(crate) fn assert_resource_capacities(
+    pub(crate) fn check_resource_capacities(
         resources: &HashMap<ResourceName, Resource>,
         state: &State,
-    ) {
+    ) -> Result<(), ResourceCapacityError> {
         for (resource_name, resource) in resources {
             match &resource.capacity {
                 Capacity::Limited(limit) => {
                     let mut total_amount = Amount::from(0.);
                     for (entity_name, entity) in state.iter_entities() {
-                        let entity_amount = entity
-                            .resource(resource_name)
-                            .expect("Entity {entity_name} does not have resource {resource_name}");
-                        if entity_amount < Amount::from(0.) {
-                            panic!(
-                                "Entity {} has negative amount of resource {}",
-                                entity_name, resource_name
-                            );
-                        }
+                        let entity_amount = entity.resource(resource_name).map_err(|e| {
+                            ResourceCapacityError::NotFound(NotFoundError::new(
+                                e.object().clone(),
+                                (entity_name.clone(), e.container().clone()),
+                            ))
+                        })?;
                         total_amount += entity_amount;
-                        if total_amount > *limit {
-                            panic!(
-                                "Resource limit exceeded for resource {resource_name}",
-                                resource_name = resource_name
-                            );
+                        if total_amount > *limit || total_amount < Amount::from(0.) {
+                            return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
+                                total_amount,
+                                Amount::from(0.),
+                                *limit,
+                            )));
                         }
                     }
                 }
                 Capacity::Unlimited => {
                     for (entity_name, entity) in state.iter_entities() {
-                        let entity_amount = entity
-                            .resource(resource_name)
-                            .expect("Entity {entity_name} does not have resource {resource_name}");
+                        let entity_amount = entity.resource(resource_name).map_err(|e| {
+                            ResourceCapacityError::NotFound(NotFoundError::new(
+                                e.object().clone(),
+                                (entity_name.clone(), e.container().clone()),
+                            ))
+                        })?;
                         if entity_amount < Amount::from(0.) {
-                            panic!(
-                                "Entity {} has negative amount of resource {}",
-                                entity_name, resource_name
-                            );
+                            return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
+                                entity_amount,
+                                Amount::from(0.),
+                                Amount::from(f64::INFINITY),
+                            )));
                         }
                     }
                 }
@@ -110,20 +113,25 @@ impl Resource {
             match &resource.capacity_per_entity {
                 Capacity::Limited(limit) => {
                     for (entity_name, entity) in state.iter_entities() {
-                        let entity_amount = entity
-                            .resource(resource_name)
-                            .expect("Entity {entity_name} does not have resource {resource_name}");
+                        let entity_amount = entity.resource(resource_name).map_err(|e| {
+                            ResourceCapacityError::NotFound(NotFoundError::new(
+                                e.object().clone(),
+                                (entity_name.clone(), e.container().clone()),
+                            ))
+                        })?;
                         if entity_amount > *limit {
-                            panic!(
-                                "Entity {} has exceeded resource limit for resource {}",
-                                entity_name, resource_name
-                            );
+                            return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
+                                entity_amount,
+                                Amount::from(0.),
+                                *limit,
+                            )));
                         }
                     }
                 }
                 Capacity::Unlimited => {}
             }
         }
+        Ok(())
     }
 }
 
@@ -150,7 +158,7 @@ mod tests {
             )]),
         )]);
 
-        Resource::assert_resource_capacities(&resources, &state);
+        Resource::check_resource_capacities(&resources, &state).unwrap();
     }
 
     #[test]
@@ -172,7 +180,7 @@ mod tests {
             )]),
         )]);
 
-        Resource::assert_resource_capacities(&resources, &state);
+        Resource::check_resource_capacities(&resources, &state).unwrap();
     }
 
     #[test]
@@ -191,7 +199,7 @@ mod tests {
             )]),
         )]);
 
-        Resource::assert_resource_capacities(&resources, &state);
+        Resource::check_resource_capacities(&resources, &state).unwrap();
     }
 
     #[test]
@@ -214,7 +222,7 @@ mod tests {
             )]),
         )]);
 
-        Resource::assert_resource_capacities(&resources, &state);
+        Resource::check_resource_capacities(&resources, &state).unwrap();
     }
 
     #[test]
@@ -250,7 +258,7 @@ mod tests {
             .collect(),
         );
 
-        Resource::assert_resource_capacities(&resources, &state);
+        Resource::check_resource_capacities(&resources, &state).unwrap();
     }
 
     #[test]
@@ -266,6 +274,6 @@ mod tests {
             Entity::from_resources(vec![]),
         )]);
 
-        Resource::assert_resource_capacities(&resources, &state);
+        Resource::check_resource_capacities(&resources, &state).unwrap();
     }
 }

@@ -9,7 +9,8 @@ use itertools::Itertools;
 use derive_more::*;
 
 use crate::cache::*;
-use crate::resources::*;
+use crate::error::ResourceCapacityError;
+use crate::resource::*;
 use crate::state::*;
 use crate::units::*;
 
@@ -183,9 +184,9 @@ impl Rule {
         match cache.condition(&rule_name, &base_state_hash) {
             Some(rule_applies) => (rule_applies, None),
             None => {
-                let result = (self.condition)(state);
-                let cache = ConditionCacheUpdate::from(rule_name, base_state_hash, result);
-                (result, Some(cache))
+                let rule_applies = (self.condition)(state);
+                let cache = ConditionCacheUpdate::from(rule_name, base_state_hash, rule_applies);
+                (rule_applies, Some(cache))
             }
         }
     }
@@ -198,25 +199,25 @@ impl Rule {
         base_state_hash: StateHash,
         base_state: State,
         resources: &HashMap<ResourceName, Resource>,
-    ) -> (State, Option<ActionCacheUpdate>) {
+    ) -> Result<(State, Option<ActionCacheUpdate>), ResourceCapacityError> {
         match cache.action(&rule_name, &base_state_hash) {
-            Some(new_state_hash) => (
+            Some(new_state_hash) => Ok((
                 possible_states
                     .get(&new_state_hash)
                     .expect("Cached new_state should be in possible states")
                     .clone(),
                 None,
-            ),
+            )),
             None => {
                 let actions = (self.actions)(base_state.clone());
                 let new_state = base_state.apply_actions(actions);
 
-                Resource::assert_resource_capacities(resources, &new_state);
+                Resource::check_resource_capacities(resources, &new_state)?;
 
                 let new_state_hash = StateHash::from_state(&new_state);
                 let cache_update =
                     ActionCacheUpdate::from(rule_name.clone(), base_state_hash, new_state_hash);
-                (new_state, Some(cache_update))
+                Ok((new_state, Some(cache_update)))
             }
         }
     }
@@ -275,8 +276,8 @@ mod tests {
         cache
             .add_condition(rule_name.clone(), state_hash, RuleApplies(true))
             .unwrap();
-        let (result, cache_update) = rule.applies(&cache, rule_name, state);
-        assert_eq!(result, RuleApplies(true));
+        let (rule_applies, cache_update) = rule.applies(&cache, rule_name, state);
+        assert_eq!(rule_applies, RuleApplies(true));
         assert_eq!(cache_update, None);
     }
 
@@ -291,8 +292,8 @@ mod tests {
         );
         let rule_name = RuleName("Test".to_string());
         let state = State::new();
-        let (result, cache_update) = rule.applies(&cache, rule_name, state.clone());
-        assert_eq!(result, RuleApplies(true));
+        let (rule_applies, cache_update) = rule.applies(&cache, rule_name, state.clone());
+        assert_eq!(rule_applies, RuleApplies(true));
         assert_eq!(
             cache_update,
             Some(ConditionCacheUpdate::from(
@@ -322,15 +323,17 @@ mod tests {
         cache
             .add_action(rule_name.clone(), state_hash, state_hash)
             .unwrap();
-        let (result, cache_update) = rule.apply(
-            &cache,
-            &possible_states,
-            rule_name,
-            state_hash,
-            state.clone(),
-            &HashMap::new(),
-        );
-        assert_eq!(result, state);
+        let (new_state, cache_update) = rule
+            .apply(
+                &cache,
+                &possible_states,
+                rule_name,
+                state_hash,
+                state.clone(),
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(new_state, state);
         assert_eq!(cache_update, None);
     }
 
@@ -347,15 +350,17 @@ mod tests {
         let state = State::new();
         let state_hash = StateHash::from_state(&state);
         let possible_states = PossibleStates::new();
-        let (result, cache_update) = rule.apply(
-            &cache,
-            &possible_states,
-            rule_name,
-            state_hash,
-            state.clone(),
-            &HashMap::new(),
-        );
-        assert_eq!(result, state);
+        let (new_state, cache_update) = rule
+            .apply(
+                &cache,
+                &possible_states,
+                rule_name,
+                state_hash,
+                state.clone(),
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(new_state, state);
         assert_eq!(
             cache_update,
             Some(ActionCacheUpdate::from(
