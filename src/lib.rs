@@ -11,8 +11,8 @@ use rayon::prelude::*;
 pub mod state;
 use state::*;
 
-pub mod resources;
-use resources::*;
+pub mod resource;
+use resource::*;
 
 pub mod units;
 use units::*;
@@ -22,6 +22,10 @@ use rules::*;
 
 mod cache;
 use cache::*;
+
+pub mod error;
+#[allow(unused_imports)]
+use error::*;
 
 /// All information and methods needed to run the simulation.
 ///
@@ -86,13 +90,14 @@ impl Simulation {
         resources: HashMap<ResourceName, Resource>,
         initial_state: State,
         rules: HashMap<RuleName, Rule>,
-    ) -> Result<Simulation, String> {
+    ) -> Result<Simulation, NotFoundError<ResourceName, (EntityName, Entity)>> {
         let initial_state_hash = StateHash::from_state(&initial_state);
         for (entity_name, entity) in initial_state.iter_entities() {
             for (resource_name, _) in entity.iter_resources() {
                 if !resources.contains_key(resource_name) {
-                    return Err(format!(
-                        "Resource {resource_name} of entity {entity_name} not found in resources",
+                    return Err(NotFoundError::new(
+                        resource_name.clone(),
+                        (entity_name.clone(), entity.clone()),
                     ));
                 }
             }
@@ -117,10 +122,11 @@ impl Simulation {
     }
 
     /// Runs the simulation for one timestep.
-    pub fn next_step(&mut self) {
-        self.update_reachable_states();
+    pub fn next_step(&mut self) -> Result<(), ResourceCapacityError> {
+        self.update_reachable_states()?;
         self.entropy = self.reachable_states.entropy();
         self.time.increment();
+        Ok(())
     }
 
     // Add all reachable states from the base state to reachable_states and possible_states while using or updating the cache respectively.
@@ -128,12 +134,15 @@ impl Simulation {
         &self,
         base_state_hash: &StateHash,
         base_state_probability: &Probability,
-    ) -> (
-        ReachableStates,
-        PossibleStates,
-        Vec<ConditionCacheUpdate>,
-        Vec<ActionCacheUpdate>,
-    ) {
+    ) -> Result<
+        (
+            ReachableStates,
+            PossibleStates,
+            Vec<ConditionCacheUpdate>,
+            Vec<ActionCacheUpdate>,
+        ),
+        ResourceCapacityError,
+    > {
         let mut new_base_state_probability: Probability = *base_state_probability;
         let mut applying_rules_probability_weight_sum = ProbabilityWeight::from(0.);
         let mut reachable_states_from_base_state_by_rule_probability_weight: HashMap<
@@ -170,7 +179,7 @@ impl Simulation {
                     *base_state_hash,
                     base_state,
                     &self.resources,
-                );
+                )?;
                 if let Some(cache) = action_cache_update {
                     action_cache_updates.push(cache);
                 }
@@ -206,12 +215,12 @@ impl Simulation {
                     .append_state(*new_state_hash, *new_state_probability)
                     .unwrap();
             });
-        (
+        Ok((
             new_reachable_states,
             new_possible_states,
             condition_cache_updates,
             action_cache_updates,
-        )
+        ))
     }
 
     fn get_probabilities_for_reachable_states(
@@ -241,35 +250,33 @@ impl Simulation {
 
     // TODO: Reimplement multithreading
     /// Update reachable_states and possible_states to the next time step.
-    fn update_reachable_states(&mut self) {
+    fn update_reachable_states(&mut self) -> Result<(), ResourceCapacityError> {
         let (condition_cache_updates_tx, condition_cache_updates_rx) = mpsc::channel();
         let (action_cache_updates_tx, action_cache_updates_rx) = mpsc::channel();
 
         let old_reachable_states = self.reachable_states.clone();
         self.reachable_states = ReachableStates::new();
-        old_reachable_states
-            .iter()
-            .for_each(|(base_state_hash, base_state_probability)| {
-                let (
-                    new_reachable_states,
-                    new_possible_states,
-                    condition_cache_updates,
-                    action_cache_update,
-                ) = self
-                    .get_reachable_states_from_base_state(base_state_hash, base_state_probability);
-                for cache_update in condition_cache_updates {
-                    condition_cache_updates_tx.send(cache_update).unwrap();
-                }
-                for cache_update in action_cache_update {
-                    action_cache_updates_tx.send(cache_update).unwrap();
-                }
-                self.possible_states
-                    .append_states(&new_possible_states)
-                    .expect("Possible states already exist");
-                self.reachable_states
-                    .append_states(&new_reachable_states)
-                    .unwrap();
-            });
+        for (base_state_hash, base_state_probability) in old_reachable_states.iter() {
+            let (
+                new_reachable_states,
+                new_possible_states,
+                condition_cache_updates,
+                action_cache_update,
+            ) =
+                self.get_reachable_states_from_base_state(base_state_hash, base_state_probability)?;
+            for cache_update in condition_cache_updates {
+                condition_cache_updates_tx.send(cache_update).unwrap();
+            }
+            for cache_update in action_cache_update {
+                action_cache_updates_tx.send(cache_update).unwrap();
+            }
+            self.possible_states
+                .append_states(&new_possible_states)
+                .expect("Possible states already exist");
+            self.reachable_states
+                .append_states(&new_reachable_states)
+                .unwrap();
+        }
 
         while let Result::Ok(condition_cache_update) = condition_cache_updates_rx.try_recv() {
             self.cache
@@ -280,14 +287,11 @@ impl Simulation {
         while let Result::Ok(action_cache_update) = action_cache_updates_rx.try_recv() {
             self.cache.apply_action_update(action_cache_update).unwrap();
         }
-
-        // TODO: Improve this
-        let probability_sum = self.reachable_states.probability_sum();
-        if !(Probability::from(0.9999999) < probability_sum
-            && probability_sum < Probability::from(1.0000001))
-        {
-            panic!("Probability sum {:?} is not 1", probability_sum);
-        }
+        debug_assert!(
+            !(Probability::from(0.9999999) < self.reachable_states.probability_sum()
+                && self.reachable_states.probability_sum() < Probability::from(1.0000001))
+        );
+        Ok(())
     }
 
     ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
@@ -296,12 +300,13 @@ impl Simulation {
     }
 
     /// Checks if the uniform distribution is a steady state i.e. if the transition rate matrix is doubly statistical.
-    pub fn is_doubly_statistical(&self) -> Result<bool, String> {
+    pub fn is_doubly_statistical(&self) -> Result<bool, ResourceCapacityError> {
         let mut simulation = Simulation::from(
             self.resources.clone(),
             self.initial_state.clone(),
             self.rules.clone(),
-        )?;
+        )
+        .map_err(ResourceCapacityError::NotFound)?;
         let mut current_reachable_states = simulation.reachable_states.clone();
         while current_reachable_states.len() != self.reachable_states.len()
             && current_reachable_states
@@ -310,7 +315,7 @@ impl Simulation {
                 .all(|state_hash| self.reachable_states.contains(state_hash))
         {
             current_reachable_states = simulation.reachable_states.clone();
-            simulation.next_step();
+            simulation.next_step()?;
         }
         let uniform_probability = Probability::from(1. / simulation.possible_states.len() as f64);
         let uniform_distribution: ReachableStates = ReachableStates::from(HashMap::from_iter(
@@ -322,7 +327,7 @@ impl Simulation {
         let mut uniform_simulation = simulation.clone();
         uniform_simulation.reachable_states = uniform_distribution;
         let uniform_entropy = uniform_simulation.reachable_states.entropy();
-        uniform_simulation.next_step();
+        uniform_simulation.next_step()?;
         let uniform_entropy_after_step = uniform_simulation.reachable_states.entropy();
         Ok(uniform_entropy == uniform_entropy_after_step)
     }

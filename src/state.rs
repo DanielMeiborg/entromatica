@@ -9,7 +9,8 @@ use itertools::Itertools;
 use derive_more::*;
 use rayon::prelude::*;
 
-use crate::resources::*;
+use crate::error::NotFoundError;
+use crate::resource::*;
 use crate::rules::*;
 use crate::units::*;
 
@@ -32,17 +33,22 @@ impl Entity {
         }
     }
 
-    pub fn resource(&self, resource_name: &ResourceName) -> Result<Amount, String> {
+    pub fn resource(
+        &self,
+        resource_name: &ResourceName,
+    ) -> Result<Amount, NotFoundError<ResourceName, Entity>> {
         self.resources
             .get(resource_name)
             .copied()
-            .ok_or(format!("Resource \"{resource_name}\" not found"))
+            .ok_or_else(|| NotFoundError::new(resource_name.clone(), self.clone()))
     }
 
-    pub fn resource_mut(&mut self, resource_name: &ResourceName) -> Result<&mut Amount, String> {
-        self.resources
-            .get_mut(resource_name)
-            .ok_or(format!("Resource \"{resource_name}\" not found"))
+    pub fn resource_mut(
+        &mut self,
+        resource_name: &ResourceName,
+    ) -> Result<&mut Amount, NotFoundError<ResourceName, Entity>> {
+        let err = NotFoundError::new(resource_name.clone(), self.clone());
+        self.resources.get_mut(resource_name).ok_or(err)
     }
 
     pub fn iter_resources(&self) -> impl Iterator<Item = (&ResourceName, &Amount)> {
@@ -296,7 +302,10 @@ mod tests {
         let entity = Entity::from_resources(resources);
         assert_eq!(
             entity.resource(&ResourceName::from("missing_resource".to_string())),
-            Result::Err("Resource \"missing_resource\" not found".to_string())
+            Result::Err(NotFoundError::new(
+                ResourceName::from("missing_resource".to_string()),
+                entity
+            ))
         );
     }
 

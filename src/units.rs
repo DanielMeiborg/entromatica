@@ -2,7 +2,8 @@ use std::hash::{Hash, Hasher};
 
 use derive_more::*;
 
-use crate::rules::ProbabilityWeight;
+use crate::error::*;
+use crate::rules::*;
 
 #[derive(
     PartialOrd,
@@ -44,7 +45,7 @@ impl PartialEq for Amount {
 impl From<f64> for Amount {
     fn from(amount: f64) -> Self {
         if amount < 0. {
-            panic!("Amount cannot be negative");
+            panic!("{:#?}", OutOfRangeError::new(amount, 0., f64::INFINITY));
         }
         Self(amount)
     }
@@ -96,7 +97,7 @@ impl PartialEq for Entropy {
 impl From<f64> for Entropy {
     fn from(entropy: f64) -> Self {
         if entropy < 0. {
-            panic!("Entropy cannot be negative");
+            panic!("{:#?}", OutOfRangeError::new(entropy, 0., f64::INFINITY));
         }
         Self(entropy)
     }
@@ -148,7 +149,7 @@ impl PartialEq for Probability {
 impl From<f64> for Probability {
     fn from(probability: f64) -> Self {
         if !(0. ..=1.).contains(&probability) {
-            panic!("Probability must be between 0 and 1");
+            panic!("{:#?}", OutOfRangeError::new(probability, 0., 1.));
         }
         Self(probability)
     }
@@ -200,7 +201,7 @@ pub struct Time(i64);
 impl From<i64> for Time {
     fn from(time: i64) -> Self {
         if time < 0 {
-            panic!("Time cannot be negative");
+            panic!("{:#?}", OutOfRangeError::new(time, 0, i64::MAX));
         }
         Self(time)
     }

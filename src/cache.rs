@@ -5,6 +5,7 @@ use itertools::Itertools;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 
+use crate::error::*;
 use crate::rules::*;
 use crate::state::*;
 
@@ -35,9 +36,12 @@ impl RuleCache {
         &mut self,
         base_state_hash: StateHash,
         applies: RuleApplies,
-    ) -> Result<(), String> {
+    ) -> Result<(), AlreadyExistsError<(StateHash, RuleApplies), RuleCache>> {
         if self.condition.contains_key(&base_state_hash) {
-            return Err("Condition already exists in cache".to_string());
+            return Err(AlreadyExistsError::new(
+                (base_state_hash, applies),
+                self.clone(),
+            ));
         }
         self.condition.insert(base_state_hash, applies);
         Ok(())
@@ -47,9 +51,12 @@ impl RuleCache {
         &mut self,
         base_state_hash: StateHash,
         new_state_hash: StateHash,
-    ) -> Result<(), String> {
+    ) -> Result<(), AlreadyExistsError<(StateHash, StateHash), RuleCache>> {
         if self.actions.contains_key(&base_state_hash) {
-            return Err("Action already exists in cache".to_string());
+            return Err(AlreadyExistsError::new(
+                (base_state_hash, new_state_hash),
+                self.clone(),
+            ));
         }
         self.actions.insert(base_state_hash, new_state_hash);
         Ok(())
@@ -77,9 +84,12 @@ impl Cache {
         self.rules.get_mut(rule_name)
     }
 
-    pub(self) fn add_rule(&mut self, rule_name: RuleName) -> Result<(), String> {
+    pub(self) fn add_rule(
+        &mut self,
+        rule_name: RuleName,
+    ) -> Result<(), AlreadyExistsError<RuleName, Cache>> {
         if self.rules.contains_key(&rule_name) {
-            return Err("Rule already exists in cache".to_string());
+            return Err(AlreadyExistsError::new(rule_name, self.clone()));
         }
         self.rules.insert(rule_name, RuleCache::new());
         Ok(())
@@ -102,13 +112,21 @@ impl Cache {
         rule_name: RuleName,
         base_state_hash: StateHash,
         new_state_hash: StateHash,
-    ) -> Result<(), String> {
+    ) -> Result<(), AlreadyExistsError<(StateHash, StateHash), Cache>> {
         match self.rule_mut(&rule_name) {
-            Some(rule_cache) => rule_cache.add_action(base_state_hash, new_state_hash),
+            Some(rule_cache) => rule_cache
+                .add_action(base_state_hash, new_state_hash)
+                .map_err(|_| {
+                    AlreadyExistsError::new((base_state_hash, new_state_hash), self.clone())
+                }),
             None => {
-                self.add_rule(rule_name.clone())?;
+                self.add_rule(rule_name.clone()).unwrap();
                 let rule_cache = self.rule_mut(&rule_name).unwrap();
-                rule_cache.add_action(base_state_hash, new_state_hash)
+                rule_cache
+                    .add_action(base_state_hash, new_state_hash)
+                    .map_err(|_| {
+                        AlreadyExistsError::new((base_state_hash, new_state_hash), self.clone())
+                    })
             }
         }
     }
@@ -118,22 +136,32 @@ impl Cache {
         rule_name: RuleName,
         base_state_hash: StateHash,
         applies: RuleApplies,
-    ) -> Result<(), String> {
+    ) -> Result<(), AlreadyExistsError<(StateHash, RuleApplies), Cache>> {
         match self.rule_mut(&rule_name) {
-            Some(rule_cache) => rule_cache.add_condition(base_state_hash, applies),
+            Some(rule_cache) => rule_cache
+                .add_condition(base_state_hash, applies)
+                .map_err(|_| AlreadyExistsError::new((base_state_hash, applies), self.clone())),
             None => {
-                self.add_rule(rule_name.clone())?;
+                self.add_rule(rule_name.clone()).unwrap();
                 let rule_cache = self.rule_mut(&rule_name).unwrap();
-                rule_cache.add_condition(base_state_hash, applies)
+                rule_cache
+                    .add_condition(base_state_hash, applies)
+                    .map_err(|_| AlreadyExistsError::new((base_state_hash, applies), self.clone()))
             }
         }
     }
 
-    pub fn apply_condition_update(&mut self, update: ConditionCacheUpdate) -> Result<(), String> {
+    pub fn apply_condition_update(
+        &mut self,
+        update: ConditionCacheUpdate,
+    ) -> Result<(), AlreadyExistsError<(StateHash, RuleApplies), Cache>> {
         self.add_condition(update.rule_name, update.base_state_hash, update.applies)
     }
 
-    pub fn apply_action_update(&mut self, update: ActionCacheUpdate) -> Result<(), String> {
+    pub fn apply_action_update(
+        &mut self,
+        update: ActionCacheUpdate,
+    ) -> Result<(), AlreadyExistsError<(StateHash, StateHash), Cache>> {
         self.add_action(
             update.rule_name,
             update.base_state_hash,
@@ -223,7 +251,7 @@ impl ActionCacheUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::*;
+    use crate::resource::*;
     use crate::units::*;
 
     #[test]
