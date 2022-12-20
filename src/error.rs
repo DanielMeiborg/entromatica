@@ -4,8 +4,8 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 
 use crate::resource::*;
-use crate::units::*;
 use crate::state::*;
+use crate::units::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct AlreadyExistsError<O: Debug, C: Debug> {
