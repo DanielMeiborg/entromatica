@@ -300,7 +300,7 @@ impl Simulation {
     }
 
     /// Checks if the uniform distribution is a steady state i.e. if the transition rate matrix is doubly statistical.
-    pub fn is_doubly_statistical(&self) -> Result<bool, ResourceCapacityError> {
+    pub fn uniform_distribution_is_steady(&self) -> Result<bool, ResourceCapacityError> {
         let mut simulation = Simulation::from(
             self.resources.clone(),
             self.initial_state.clone(),
