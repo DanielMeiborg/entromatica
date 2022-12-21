@@ -81,7 +81,7 @@ impl Resource {
                                 (entity_name.clone(), e.container().clone()),
                             ))
                         })?;
-                        total_amount += entity_amount;
+                        total_amount += *entity_amount;
                         if total_amount > *limit || total_amount < Amount::from(0.) {
                             return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
                                 total_amount,
@@ -99,9 +99,9 @@ impl Resource {
                                 (entity_name.clone(), e.container().clone()),
                             ))
                         })?;
-                        if entity_amount < Amount::from(0.) {
+                        if *entity_amount < Amount::from(0.) {
                             return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
-                                entity_amount,
+                                *entity_amount,
                                 Amount::from(0.),
                                 Amount::from(f64::INFINITY),
                             )));
@@ -119,9 +119,9 @@ impl Resource {
                                 (entity_name.clone(), e.container().clone()),
                             ))
                         })?;
-                        if entity_amount > *limit {
+                        if entity_amount > limit {
                             return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
-                                entity_amount,
+                                *entity_amount,
                                 Amount::from(0.),
                                 *limit,
                             )));
@@ -141,7 +141,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn assert_resource_capacities_should_pass_on_maintained_limit() {
+    fn check_resource_capacities_should_pass_on_maintained_limit() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
             Resource::from(
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn assert_resource_capacities_should_pass_on_maintained_entity_limit() {
+    fn check_resource_capacities_should_pass_on_maintained_entity_limit() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
             Resource::from(
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn assert_resource_capacities_should_panic_on_negative_amounts() {
+    fn check_resource_capacities_should_panic_on_negative_amounts() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
             Resource::from("Gold".to_string(), Capacity::Unlimited, Capacity::Unlimited),
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn assert_resource_capacities_should_panic_on_exceeded_limit() {
+    fn check_resource_capacities_should_panic_on_exceeded_limit() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
             Resource::from(
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn assert_resource_capacities_should_panic_on_exceeded_entity_limit() {
+    fn check_resource_capacities_should_panic_on_exceeded_entity_limit() {
         let resources = HashMap::from([(
             ResourceName::from("Gold".to_string()),
             Resource::from(
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn assert_resource_capacities_should_panic_on_nonexisting_resources() {
+    fn check_resource_capacities_should_panic_on_nonexisting_resources() {
         let resources = HashMap::from([(
             ResourceName::from("nonexistium".to_string()),
             Resource::new(),

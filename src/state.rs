@@ -36,10 +36,9 @@ impl Entity {
     pub fn resource(
         &self,
         resource_name: &ResourceName,
-    ) -> Result<Amount, NotFoundError<ResourceName, Entity>> {
+    ) -> Result<&Amount, NotFoundError<ResourceName, Entity>> {
         self.resources
             .get(resource_name)
-            .copied()
             .ok_or_else(|| NotFoundError::new(resource_name.clone(), self.clone()))
     }
 
@@ -60,7 +59,7 @@ impl Entity {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut, Deref)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut)]
 pub struct EntityName(pub String);
 
 impl EntityName {
@@ -80,7 +79,7 @@ impl Hash for State {
     fn hash<H: Hasher>(&self, state: &mut H) {
         for (name, entity) in &self.entities {
             for (resource_name, amount) in &entity.resources {
-                (name, resource_name, amount.to_bits()).hash(state);
+                (name.clone(), resource_name.clone(), *amount).hash(state);
             }
         }
     }
@@ -111,17 +110,21 @@ impl State {
         }
     }
 
-    pub fn entity(&self, entity_name: &EntityName) -> Result<Entity, String> {
+    pub fn entity(
+        &self,
+        entity_name: &EntityName,
+    ) -> Result<&Entity, NotFoundError<EntityName, State>> {
         self.entities
             .get(entity_name)
-            .cloned()
-            .ok_or(format!("Entity \"{entity_name}\" not found"))
+            .ok_or_else(|| NotFoundError::new(entity_name.clone(), self.clone()))
     }
 
-    pub fn entity_mut(&mut self, entity_name: &EntityName) -> Result<&mut Entity, String> {
-        self.entities
-            .get_mut(entity_name)
-            .ok_or(format!("Entity \"{entity_name}\" not found"))
+    pub fn entity_mut(
+        &mut self,
+        entity_name: &EntityName,
+    ) -> Result<&mut Entity, NotFoundError<EntityName, State>> {
+        let err = NotFoundError::new(entity_name.clone(), self.clone());
+        self.entities.get_mut(entity_name).ok_or(err)
     }
 
     pub fn iter_entities(&self) -> impl Iterator<Item = (&EntityName, &Entity)> {
@@ -138,10 +141,10 @@ impl State {
         for (_, action) in actions {
             new_state
                 .entities
-                .get_mut(&action.target())
+                .get_mut(action.target())
                 .expect("Entity {action.entity} not found in state")
                 .resources
-                .insert(action.resource(), action.amount());
+                .insert(action.resource().clone(), action.amount());
         }
         new_state
     }
@@ -162,7 +165,7 @@ impl StateHash {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Default, From, Into, AsRef, AsMut, Index, Deref)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, From, Into, AsRef, AsMut, Index)]
 pub struct PossibleStates(HashMap<StateHash, State>);
 
 impl PossibleStates {
@@ -189,12 +192,32 @@ impl PossibleStates {
         Ok(())
     }
 
-    pub fn state(&self, state_hash: &StateHash) -> Option<State> {
-        self.0.get(state_hash).cloned()
+    pub fn state(&self, state_hash: &StateHash) -> Option<&State> {
+        self.0.get(state_hash)
     }
 
     pub fn iter(&self) -> hashbrown::hash_map::Iter<StateHash, State> {
         self.0.iter()
+    }
+
+    pub fn values(&self) -> hashbrown::hash_map::Values<StateHash, State> {
+        self.0.values()
+    }
+
+    pub fn iter_mut(&mut self) -> hashbrown::hash_map::IterMut<StateHash, State> {
+        self.0.iter_mut()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn contains(&self, state_hash: &StateHash) -> bool {
+        self.0.contains_key(state_hash)
     }
 }
 
@@ -232,8 +255,8 @@ impl ReachableStates {
         Ok(())
     }
 
-    pub fn values(&self) -> std::iter::Cloned<hashbrown::hash_map::Values<StateHash, Probability>> {
-        self.0.values().cloned()
+    pub fn values(&self) -> hashbrown::hash_map::Values<StateHash, Probability> {
+        self.0.values()
     }
 
     pub fn iter(&self) -> hashbrown::hash_map::Iter<StateHash, Probability> {
@@ -291,7 +314,9 @@ mod tests {
         let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
         let entity = Entity::from_resources(resources);
         assert_eq!(
-            entity.resource(&ResourceName::from("resource".to_string())),
+            entity
+                .resource(&ResourceName::from("resource".to_string()))
+                .cloned(),
             Result::Ok(Amount::from(1.))
         );
     }
@@ -304,7 +329,7 @@ mod tests {
             entity.resource(&ResourceName::from("missing_resource".to_string())),
             Result::Err(NotFoundError::new(
                 ResourceName::from("missing_resource".to_string()),
-                entity
+                entity.clone()
             ))
         );
     }
@@ -356,7 +381,7 @@ mod tests {
         )]);
 
         assert_eq!(
-            state.entity(&EntityName::from("A".to_string()),),
+            state.entity(&EntityName::from("A".to_string()),).cloned(),
             Ok(Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
@@ -374,8 +399,13 @@ mod tests {
             )]),
         )]);
         assert_eq!(
-            state.entity(&EntityName::from("missing_entity".to_string())),
-            Err("Entity \"missing_entity\" not found".to_string())
+            state
+                .entity(&EntityName::from("missing_entity".to_string()))
+                .cloned(),
+            Err(NotFoundError::new(
+                EntityName::from("missing_entity".to_string()),
+                state
+            ))
         );
     }
 
@@ -408,8 +438,13 @@ mod tests {
             )]),
         )]);
         assert_eq!(
-            state.entity_mut(&EntityName::from("missing_entity".to_string())),
-            Err("Entity \"missing_entity\" not found".to_string())
+            state
+                .entity_mut(&EntityName::from("missing_entity".to_string()))
+                .cloned(),
+            Err(NotFoundError::new(
+                EntityName::from("missing_entity".to_string()),
+                state
+            ))
         );
     }
 
