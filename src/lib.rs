@@ -121,6 +121,34 @@ impl Simulation {
         })
     }
 
+    pub fn resources(&self) -> &HashMap<ResourceName, Resource> {
+        &self.resources
+    }
+
+    pub fn initial_state(&self) -> &State {
+        &self.initial_state
+    }
+
+    pub fn possible_states(&self) -> &PossibleStates {
+        &self.possible_states
+    }
+
+    pub fn reachable_states(&self) -> &ReachableStates {
+        &self.reachable_states
+    }
+
+    pub fn rules(&self) -> &HashMap<RuleName, Rule> {
+        &self.rules
+    }
+
+    pub fn time(&self) -> Time {
+        self.time
+    }
+
+    pub fn entropy(&self) -> Entropy {
+        self.entropy
+    }
+
     /// Runs the simulation for one timestep.
     pub fn next_step(&mut self) -> Result<(), ResourceCapacityError> {
         self.update_reachable_states()?;
@@ -129,8 +157,15 @@ impl Simulation {
         Ok(())
     }
 
+    pub fn run(&mut self, steps: usize) -> Result<(), ResourceCapacityError> {
+        for _ in 0..steps {
+            self.next_step()?;
+        }
+        Ok(())
+    }
+
     // Add all reachable states from the base state to reachable_states and possible_states while using or updating the cache respectively.
-    fn get_reachable_states_from_base_state(
+    fn reachable_states_from_base_state(
         &self,
         base_state_hash: &StateHash,
         base_state_probability: &Probability,
@@ -161,7 +196,7 @@ impl Simulation {
                 .state(base_state_hash)
                 .expect("Base state {base_state_hash} not found in possible_states");
             let (rule_applies, condition_cache_update) =
-                rule.applies(&self.cache, rule_name.clone(), state);
+                rule.applies(&self.cache, rule_name.clone(), state.clone());
             if let Some(cache) = condition_cache_update {
                 condition_cache_updates.push(cache);
             }
@@ -177,7 +212,7 @@ impl Simulation {
                     &self.possible_states,
                     rule_name.clone(),
                     *base_state_hash,
-                    base_state,
+                    base_state.clone(),
                     &self.resources,
                 )?;
                 if let Some(cache) = action_cache_update {
@@ -201,7 +236,7 @@ impl Simulation {
         }
 
         let probabilities_for_reachable_states_from_base_state =
-            Simulation::get_probabilities_for_reachable_states(
+            Simulation::probabilities_for_reachable_states(
                 reachable_states_from_base_state_by_rule_probability_weight,
                 *base_state_hash,
                 *base_state_probability,
@@ -223,7 +258,7 @@ impl Simulation {
         ))
     }
 
-    fn get_probabilities_for_reachable_states(
+    fn probabilities_for_reachable_states(
         reachable_states_by_rule_probability_weight: HashMap<StateHash, ProbabilityWeight>,
         base_state_hash: StateHash,
         base_state_probability: Probability,
@@ -262,8 +297,7 @@ impl Simulation {
                 new_possible_states,
                 condition_cache_updates,
                 action_cache_update,
-            ) =
-                self.get_reachable_states_from_base_state(base_state_hash, base_state_probability)?;
+            ) = self.reachable_states_from_base_state(base_state_hash, base_state_probability)?;
             for cache_update in condition_cache_updates {
                 condition_cache_updates_tx.send(cache_update).unwrap();
             }
@@ -295,8 +329,8 @@ impl Simulation {
     }
 
     ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
-    pub fn get_graph(&self) -> Graph<State, RuleName> {
-        self.cache.get_graph(self.possible_states.clone())
+    pub fn graph(&self) -> Graph<State, RuleName> {
+        self.cache.graph(self.possible_states.clone())
     }
 
     /// Checks if the uniform distribution is a steady state i.e. if the transition rate matrix is doubly statistical.

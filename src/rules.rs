@@ -40,12 +40,12 @@ impl Action {
         }
     }
 
-    pub fn target(&self) -> EntityName {
-        self.target.clone()
+    pub fn target(&self) -> &EntityName {
+        &self.target
     }
 
-    pub fn resource(&self) -> ResourceName {
-        self.resource.clone()
+    pub fn resource(&self) -> &ResourceName {
+        &self.resource
     }
 
     pub fn amount(&self) -> Amount {
@@ -72,7 +72,6 @@ impl ActionName {
     Into,
     AsRef,
     AsMut,
-    Deref,
     Add,
     Sub,
     Mul,
@@ -182,7 +181,7 @@ impl Rule {
         }
         let base_state_hash = StateHash::from_state(&state);
         match cache.condition(&rule_name, &base_state_hash) {
-            Some(rule_applies) => (rule_applies, None),
+            Some(rule_applies) => (*rule_applies, None),
             None => {
                 let rule_applies = (self.condition)(state);
                 let cache = ConditionCacheUpdate::from(rule_name, base_state_hash, rule_applies);
@@ -203,7 +202,7 @@ impl Rule {
         match cache.action(&rule_name, &base_state_hash) {
             Some(new_state_hash) => Ok((
                 possible_states
-                    .get(&new_state_hash)
+                    .state(&new_state_hash)
                     .expect("Cached new_state should be in possible states")
                     .clone(),
                 None,
@@ -226,7 +225,7 @@ impl Rule {
         self.weight
     }
 
-    pub fn description(&self) -> &str {
+    pub fn description(&self) -> &String {
         &self.description
     }
 }

@@ -76,8 +76,8 @@ impl Cache {
         }
     }
 
-    pub(self) fn rule(&self, rule_name: &RuleName) -> Option<RuleCache> {
-        self.rules.get(rule_name).cloned()
+    pub(self) fn rule(&self, rule_name: &RuleName) -> Option<&RuleCache> {
+        self.rules.get(rule_name)
     }
 
     pub(self) fn rule_mut(&mut self, rule_name: &RuleName) -> Option<&mut RuleCache> {
@@ -99,8 +99,8 @@ impl Cache {
         &self,
         rule_name: &RuleName,
         base_state_hash: &StateHash,
-    ) -> Option<RuleApplies> {
-        self.rule(rule_name)?.condition(base_state_hash).copied()
+    ) -> Option<&RuleApplies> {
+        self.rule(rule_name)?.condition(base_state_hash)
     }
 
     pub fn action(&self, rule_name: &RuleName, base_state_hash: &StateHash) -> Option<StateHash> {
@@ -170,7 +170,7 @@ impl Cache {
     }
 
     ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
-    pub fn get_graph(&self, possible_states: PossibleStates) -> Graph<State, RuleName> {
+    pub fn graph(&self, possible_states: PossibleStates) -> Graph<State, RuleName> {
         let mut graph = Graph::<State, RuleName>::new();
         let mut nodes: HashMap<StateHash, NodeIndex> = HashMap::new();
         for (state_hash, state) in possible_states.iter() {
@@ -267,7 +267,10 @@ mod tests {
         cache
             .add_action(rule_name.clone(), base_state_hash, new_state_hash)
             .unwrap();
-        assert_eq!(cache.condition(&rule_name, &base_state_hash), Some(applies));
+        assert_eq!(
+            cache.condition(&rule_name, &base_state_hash).cloned(),
+            Some(applies)
+        );
         assert_eq!(
             cache.action(&rule_name, &base_state_hash),
             Some(new_state_hash)
@@ -301,7 +304,10 @@ mod tests {
         cache
             .add_action(rule_name.clone(), base_state_hash, new_new_state_hash)
             .unwrap_err();
-        assert_eq!(cache.condition(&rule_name, &base_state_hash), Some(applies));
+        assert_eq!(
+            cache.condition(&rule_name, &base_state_hash).cloned(),
+            Some(applies)
+        );
         assert_eq!(
             cache.action(&rule_name, &base_state_hash),
             Some(new_state_hash)
@@ -321,7 +327,10 @@ mod tests {
             ActionCacheUpdate::from(rule_name.clone(), base_state_hash, new_state_hash);
         cache.apply_condition_update(condition_update).unwrap();
         cache.apply_action_update(action_update).unwrap();
-        assert_eq!(cache.condition(&rule_name, &base_state_hash), Some(applies));
+        assert_eq!(
+            cache.condition(&rule_name, &base_state_hash).cloned(),
+            Some(applies)
+        );
         assert_eq!(
             cache.action(&rule_name, &base_state_hash),
             Some(new_state_hash)
@@ -354,7 +363,7 @@ mod tests {
             .add_action(rule_name, base_state_hash, new_state_hash)
             .unwrap();
 
-        let graph = cache.get_graph(possible_states);
+        let graph = cache.graph(possible_states);
         assert_eq!(graph.node_count(), 2);
         assert_eq!(graph.edge_count(), 1);
         assert_eq!(graph.raw_nodes()[0].weight, base_state);
