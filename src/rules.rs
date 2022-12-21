@@ -228,6 +228,14 @@ impl Rule {
     pub fn description(&self) -> &String {
         &self.description
     }
+
+    pub fn condition(&self) -> fn(State) -> RuleApplies {
+        self.condition
+    }
+
+    pub fn actions(&self) -> fn(State) -> HashMap<ActionName, Action> {
+        self.actions
+    }
 }
 
 #[derive(

@@ -65,6 +65,18 @@ impl Resource {
         }
     }
 
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    pub fn capacity(&self) -> &Capacity {
+        &self.capacity
+    }
+
+    pub fn capacity_per_entity(&self) -> &Capacity {
+        &self.capacity_per_entity
+    }
+
     /// Checks if the given state satisfies all resource constrains.
     pub(crate) fn check_resource_capacities(
         resources: &HashMap<ResourceName, Resource>,
