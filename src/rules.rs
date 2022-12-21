@@ -17,10 +17,19 @@ use crate::units::*;
 /// An action a rule can take on a single entity and resource when its condition is met.
 #[derive(PartialEq, Clone, Debug, Default)]
 pub struct Action {
-    // TODO: name to description i.e. vec to hashmap
     resource: ResourceName,
     target: EntityName,
     amount: Amount,
+}
+
+impl Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "Action: set {} of {} to {}",
+            self.resource, self.target, self.amount
+        )
+    }
 }
 
 impl Action {
@@ -142,7 +151,10 @@ impl Default for Rule {
 
 impl Display for Rule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.description())
+        writeln!(f, "Rule:")?;
+        writeln!(f, "Description: {}", self.description)?;
+        writeln!(f, "Weight: {}", self.weight)?;
+        Ok(())
     }
 }
 

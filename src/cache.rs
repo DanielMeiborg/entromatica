@@ -20,17 +20,17 @@ pub(self) struct RuleCache {
 
 impl Display for RuleCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "RuleCache:")?;
+        writeln!(f, "RuleCache:")?;
         for (base_state_hash, applies) in &self.condition {
             if applies.is_true() {
                 match self.condition(base_state_hash) {
                     Some(new_state_hash) => {
-                        write!(f, "Rule applies for {base_state_hash} -> {new_state_hash}")?
+                        writeln!(f, "Rule applies for {base_state_hash} -> {new_state_hash}")?
                     }
-                    None => write!(f, "Rule applies for {base_state_hash}")?,
+                    None => writeln!(f, "Rule applies for {base_state_hash}")?,
                 };
             } else {
-                write!(f, "Rule does not apply for {base_state_hash}")?;
+                writeln!(f, "Rule does not apply for {base_state_hash}")?;
             }
         }
         Ok(())
@@ -92,9 +92,9 @@ pub(crate) struct Cache {
 
 impl Display for Cache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Cache ")?;
+        writeln!(f, "Cache:")?;
         for (rule_name, rule_cache) in &self.rules {
-            write!(f, "{rule_name}: {rule_cache}")?;
+            writeln!(f, "{rule_name}: {rule_cache}")?;
         }
         Ok(())
     }

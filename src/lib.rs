@@ -1,4 +1,4 @@
-use std::sync::mpsc;
+use std::{fmt::Display, sync::mpsc};
 
 #[allow(unused_imports)]
 use hashbrown::{HashMap, HashSet};
@@ -68,6 +68,33 @@ pub struct Simulation {
 
     /// The cache used for performance purposes.
     cache: Cache,
+}
+
+impl Display for Simulation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Simulation:")?;
+        writeln!(f, "  Time: {}", self.time)?;
+        writeln!(f, "  Entropy: {}", self.entropy)?;
+        writeln!(f, "  Resources:")?;
+        for (resource_name, resource) in self.resources.iter() {
+            writeln!(f, "    {}: {}", resource_name, resource)?;
+        }
+        writeln!(f, "  Initial state:")?;
+        writeln!(f, "{}", self.initial_state)?;
+        writeln!(f, "  Possible states:")?;
+        for (state_hash, state) in self.possible_states.iter() {
+            writeln!(f, "    {}: {}", state_hash, state)?;
+        }
+        writeln!(f, "  Reachable states:")?;
+        for (state_hash, probability) in self.reachable_states.iter() {
+            writeln!(f, "    {}: {}", state_hash, probability)?;
+        }
+        writeln!(f, "  Rules:")?;
+        for (rule_name, rule) in self.rules.iter() {
+            writeln!(f, "    {}: {}", rule_name, rule)?;
+        }
+        Ok(())
+    }
 }
 
 impl Simulation {
