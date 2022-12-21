@@ -9,7 +9,7 @@ use itertools::Itertools;
 use derive_more::*;
 use rayon::prelude::*;
 
-use crate::error::NotFoundError;
+use crate::error::{AlreadyExistsError, NotFoundError, OutOfRangeError};
 use crate::resource::*;
 use crate::rules::*;
 use crate::units::*;
@@ -177,15 +177,18 @@ impl PossibleStates {
         &mut self,
         state_hash: StateHash,
         state: State,
-    ) -> Result<(), String> {
+    ) -> Result<(), AlreadyExistsError<StateHash, State>> {
         if self.state(&state_hash).is_some() {
-            return Err(format!("State {state_hash} already exists"));
+            return Err(AlreadyExistsError::new(state_hash, state));
         }
         self.0.insert(state_hash, state);
         Ok(())
     }
 
-    pub(crate) fn append_states(&mut self, states: &PossibleStates) -> Result<(), String> {
+    pub(crate) fn append_states(
+        &mut self,
+        states: &PossibleStates,
+    ) -> Result<(), AlreadyExistsError<StateHash, State>> {
         for (state_hash, state) in states.iter() {
             self.append_state(*state_hash, state.clone())?;
         }
@@ -202,10 +205,6 @@ impl PossibleStates {
 
     pub fn values(&self) -> hashbrown::hash_map::Values<StateHash, State> {
         self.0.values()
-    }
-
-    pub fn iter_mut(&mut self) -> hashbrown::hash_map::IterMut<StateHash, State> {
-        self.0.iter_mut()
     }
 
     pub fn len(&self) -> usize {
@@ -229,15 +228,19 @@ impl ReachableStates {
         Self(HashMap::new())
     }
 
-    pub(crate) fn append_state(
+    pub fn append_state(
         &mut self,
         state_hash: StateHash,
         state_probability: Probability,
-    ) -> Result<(), String> {
+    ) -> Result<(), OutOfRangeError<Probability>> {
         match self.0.get_mut(&state_hash) {
             Some(probability) => {
                 if *probability + state_probability > Probability::from(1.) {
-                    return Err(format!("Probability of state {state_hash} exceeds 1"));
+                    return Err(OutOfRangeError::new(
+                        *probability + state_probability,
+                        Probability::from(0.),
+                        Probability::from(1.),
+                    ));
                 }
                 *probability += state_probability;
             }
@@ -248,7 +251,10 @@ impl ReachableStates {
         Ok(())
     }
 
-    pub(crate) fn append_states(&mut self, states: &ReachableStates) -> Result<(), String> {
+    pub fn append_states(
+        &mut self,
+        states: &ReachableStates,
+    ) -> Result<(), OutOfRangeError<Probability>> {
         for (state_hash, state_probability) in states.iter() {
             self.append_state(*state_hash, *state_probability)?;
         }
