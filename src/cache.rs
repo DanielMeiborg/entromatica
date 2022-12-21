@@ -1,3 +1,6 @@
+use std::fmt::Display;
+use std::fmt::Formatter;
+
 #[allow(unused_imports)]
 use hashbrown::{HashMap, HashSet};
 #[allow(unused_imports)]
@@ -13,6 +16,25 @@ use crate::state::*;
 pub(self) struct RuleCache {
     condition: HashMap<StateHash, RuleApplies>,
     actions: HashMap<StateHash, StateHash>,
+}
+
+impl Display for RuleCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "RuleCache:")?;
+        for (base_state_hash, applies) in &self.condition {
+            if applies.is_true() {
+                match self.condition(base_state_hash) {
+                    Some(new_state_hash) => {
+                        writeln!(f, "Rule applies for {base_state_hash} -> {new_state_hash}")?
+                    }
+                    None => writeln!(f, "Rule applies for {base_state_hash}")?,
+                };
+            } else {
+                writeln!(f, "Rule does not apply for {base_state_hash}")?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl RuleCache {
@@ -66,6 +88,16 @@ impl RuleCache {
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub(crate) struct Cache {
     rules: HashMap<RuleName, RuleCache>,
+}
+
+impl Display for Cache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Cache:")?;
+        for (rule_name, rule_cache) in &self.rules {
+            writeln!(f, "{rule_name}: {rule_cache}")?;
+        }
+        Ok(())
+    }
 }
 
 impl Cache {
@@ -198,6 +230,16 @@ pub(crate) struct ConditionCacheUpdate {
     pub(self) applies: RuleApplies,
 }
 
+impl Display for ConditionCacheUpdate {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ConditionCacheUpdate for base state {}: rule {} applies: {}",
+            self.base_state_hash, self.rule_name, self.applies
+        )
+    }
+}
+
 impl ConditionCacheUpdate {
     #[allow(dead_code)]
     pub fn new() -> Self {
@@ -222,6 +264,16 @@ pub(crate) struct ActionCacheUpdate {
     pub(self) rule_name: RuleName,
     pub(self) base_state_hash: StateHash,
     pub(self) new_state_hash: StateHash,
+}
+
+impl Display for ActionCacheUpdate {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ActionCacheUpdate for base state {}: rule {} new state: {}",
+            self.base_state_hash, self.rule_name, self.new_state_hash
+        )
+    }
 }
 
 impl ActionCacheUpdate {

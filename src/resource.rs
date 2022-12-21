@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use derive_more::*;
 
 #[allow(unused_imports)]
@@ -46,6 +48,15 @@ pub struct Resource {
     description: String,
     capacity: Capacity,
     capacity_per_entity: Capacity,
+}
+
+impl Display for Resource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Resource: {}", self.description)?;
+        writeln!(f, "Capacity: {:?}", self.capacity)?;
+        writeln!(f, "Capacity per entity: {:?}", self.capacity_per_entity)?;
+        Ok(())
+    }
 }
 
 impl Resource {

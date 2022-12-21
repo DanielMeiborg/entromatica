@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
 #[allow(unused_imports)]
@@ -18,6 +19,16 @@ use crate::units::*;
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Entity {
     resources: HashMap<ResourceName, Amount>,
+}
+
+impl Display for Entity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Entity:")?;
+        for (resource_name, amount) in &self.resources {
+            writeln!(f, "  {}: {}", resource_name, amount)?;
+        }
+        Ok(())
+    }
 }
 
 impl Entity {
@@ -73,6 +84,24 @@ impl EntityName {
 #[derive(Clone, Debug, Default, From, Into)]
 pub struct State {
     entities: HashMap<EntityName, Entity>,
+}
+
+impl Display for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "State:")?;
+        for (entity_name, entity) in &self.entities {
+            writeln!(f, "  {entity_name}:")?;
+            for (resource_name, amount) in &entity.resources {
+                writeln!(
+                    f,
+                    "    {resource_name}: {amount}",
+                    resource_name = resource_name,
+                    amount = amount
+                )?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Hash for State {
@@ -168,6 +197,20 @@ impl StateHash {
 #[derive(Clone, PartialEq, Eq, Debug, Default, From, Into, AsRef, AsMut, Index)]
 pub struct PossibleStates(HashMap<StateHash, State>);
 
+impl Display for PossibleStates {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (state_hash, state) in &self.0 {
+            writeln!(
+                f,
+                "{state_hash}: {state}",
+                state_hash = state_hash,
+                state = state
+            )?;
+        }
+        Ok(())
+    }
+}
+
 impl PossibleStates {
     pub fn new() -> Self {
         Self(HashMap::new())
@@ -222,6 +265,20 @@ impl PossibleStates {
 
 #[derive(Clone, PartialEq, Debug, Default, From, Into, AsRef, AsMut, Index)]
 pub struct ReachableStates(HashMap<StateHash, Probability>);
+
+impl Display for ReachableStates {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (state_hash, probability) in &self.0 {
+            writeln!(
+                f,
+                "{state_hash}: {probability}",
+                state_hash = state_hash,
+                probability = probability
+            )?;
+        }
+        Ok(())
+    }
+}
 
 impl ReachableStates {
     pub fn new() -> Self {
