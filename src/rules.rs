@@ -9,7 +9,7 @@ use itertools::Itertools;
 use derive_more::*;
 
 use crate::cache::*;
-use crate::error::ResourceCapacityError;
+use crate::error::ErrorKind;
 use crate::resource::*;
 use crate::state::*;
 use crate::units::*;
@@ -210,7 +210,7 @@ impl Rule {
         base_state_hash: StateHash,
         base_state: State,
         resources: &HashMap<ResourceName, Resource>,
-    ) -> Result<(State, Option<ActionCacheUpdate>), ResourceCapacityError> {
+    ) -> Result<(State, Option<ActionCacheUpdate>), ErrorKind> {
         match cache.action(&rule_name, &base_state_hash) {
             Some(new_state_hash) => Ok((
                 possible_states

@@ -92,38 +92,26 @@ impl Resource {
     pub(crate) fn check_resource_capacities(
         resources: &HashMap<ResourceName, Resource>,
         state: &State,
-    ) -> Result<(), ResourceCapacityError> {
+    ) -> Result<(), ErrorKind> {
         for (resource_name, resource) in resources {
             match &resource.capacity {
                 Capacity::Limited(limit) => {
                     let mut total_amount = Amount::from(0.);
-                    for (entity_name, entity) in state.iter_entities() {
-                        let entity_amount = entity.resource(resource_name).map_err(|e| {
-                            ResourceCapacityError::NotFound(NotFoundError::new(
-                                e.object().clone(),
-                                (entity_name.clone(), e.container().clone()),
-                            ))
-                        })?;
+                    for (_, entity) in state.iter_entities() {
+                        let entity_amount = entity.resource(resource_name)?;
                         total_amount += *entity_amount;
                         if total_amount > *limit || total_amount < Amount::from(0.) {
-                            return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
-                                total_amount,
-                                Amount::from(0.),
-                                *limit,
-                            )));
+                            return Err(ErrorKind::TotalAmountExceedsResourceLimit(
+                                OutOfRangeError::new(total_amount, Amount::from(0.), *limit),
+                            ));
                         }
                     }
                 }
                 Capacity::Unlimited => {
-                    for (entity_name, entity) in state.iter_entities() {
-                        let entity_amount = entity.resource(resource_name).map_err(|e| {
-                            ResourceCapacityError::NotFound(NotFoundError::new(
-                                e.object().clone(),
-                                (entity_name.clone(), e.container().clone()),
-                            ))
-                        })?;
+                    for (_, entity) in state.iter_entities() {
+                        let entity_amount = entity.resource(resource_name)?;
                         if *entity_amount < Amount::from(0.) {
-                            return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
+                            return Err(ErrorKind::AmountIsNegative(OutOfRangeError::new(
                                 *entity_amount,
                                 Amount::from(0.),
                                 Amount::from(f64::INFINITY),
@@ -135,15 +123,10 @@ impl Resource {
 
             match &resource.capacity_per_entity {
                 Capacity::Limited(limit) => {
-                    for (entity_name, entity) in state.iter_entities() {
-                        let entity_amount = entity.resource(resource_name).map_err(|e| {
-                            ResourceCapacityError::NotFound(NotFoundError::new(
-                                e.object().clone(),
-                                (entity_name.clone(), e.container().clone()),
-                            ))
-                        })?;
+                    for (_, entity) in state.iter_entities() {
+                        let entity_amount = entity.resource(resource_name)?;
                         if entity_amount > limit {
-                            return Err(ResourceCapacityError::OutOfRange(OutOfRangeError::new(
+                            return Err(ErrorKind::AmountExceedsEntityLimit(OutOfRangeError::new(
                                 *entity_amount,
                                 Amount::from(0.),
                                 *limit,

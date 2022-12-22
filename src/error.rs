@@ -3,7 +3,9 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use crate::cache::*;
 use crate::resource::*;
+use crate::rules::*;
 use crate::state::*;
 use crate::units::*;
 
@@ -112,8 +114,47 @@ impl<T: Debug> OutOfRangeError<T> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct InternalError {
+    message: String,
+}
+
+impl Display for InternalError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Internal error: {}", self.message)
+    }
+}
+
+impl Error for InternalError {}
+
+impl InternalError {
+    pub fn new(message: String) -> Self {
+        Self { message }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, PartialEq)]
-pub enum ResourceCapacityError {
-    NotFound(NotFoundError<ResourceName, (EntityName, Entity)>),
-    OutOfRange(OutOfRangeError<Amount>),
+pub(crate) enum InternalErrorKind {
+    ConditionAlreadyExists(AlreadyExistsError<(StateHash, RuleApplies), Cache>),
+    ActionAlreadyExists(AlreadyExistsError<(StateHash, StateHash), Cache>),
+    RuleAlreadyExists(AlreadyExistsError<RuleName, Cache>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorKind {
+    ResourceNotFound(NotFoundError<ResourceName, Entity>),
+    StateInPossibleStatesNotFound(NotFoundError<StateHash, PossibleStates>),
+    StateInReachableStatesNotFound(NotFoundError<StateHash, ReachableStates>),
+    EntityNotFound(NotFoundError<EntityName, State>),
+    AmountExceedsEntityLimit(OutOfRangeError<Amount>),
+    TotalAmountExceedsResourceLimit(OutOfRangeError<Amount>),
+    AmountIsNegative(OutOfRangeError<Amount>),
+    ProbabilityOutOfRange(OutOfRangeError<Probability>),
+    InternalError(InternalError),
+    StateAlreadyExists(AlreadyExistsError<StateHash, State>),
 }
