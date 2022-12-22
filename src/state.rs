@@ -338,10 +338,12 @@ impl PossibleStates {
         state_hash: StateHash,
         state: State,
     ) -> Result<(), ErrorKind> {
-        if self.state(&state_hash).is_some() {
-            return Err(ErrorKind::StateInPossibleStatesAlreadyExists(
-                AlreadyExistsError::new((state_hash, state), self.clone()),
-            ));
+        if let Some(present_state) = self.state(&state_hash) {
+            if state != *present_state {
+                return Err(ErrorKind::StateInPossibleStatesAlreadyExists(
+                    AlreadyExistsError::new((state_hash, state), self.clone()),
+                ));
+            }
         }
         self.0.insert(state_hash, state);
         Ok(())
@@ -793,10 +795,23 @@ mod tests {
         possible_states
             .append_state(state_hash, state.clone())
             .unwrap();
-        let expected = HashMap::from([(state_hash, state.clone())]);
+        let expected = HashMap::from([(state_hash, state)]);
         assert_eq!(possible_states.0, expected);
 
-        possible_states.append_state(state_hash, state).unwrap_err();
+        let new_state = State::from_entities(vec![(
+            EntityName::from("A".to_string()),
+            Entity::from_resources(vec![
+                (ResourceName::from("Resource".to_string()), Amount::from(1.)),
+                (
+                    ResourceName::from("Resource2".to_string()),
+                    Amount::from(2.),
+                ),
+            ]),
+        )]);
+
+        possible_states
+            .append_state(state_hash, new_state)
+            .unwrap_err();
         assert_eq!(possible_states.0, expected);
     }
 
