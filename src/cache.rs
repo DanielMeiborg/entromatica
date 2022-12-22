@@ -154,8 +154,12 @@ impl Cache {
                     ))
                 }),
             None => {
-                self.add_rule(rule_name.clone()).unwrap();
-                let rule_cache = self.rule_mut(&rule_name).unwrap();
+                self.add_rule(rule_name.clone())?;
+                let err = InternalErrorKind::RuleNotFound(NotFoundError::new(
+                    rule_name.clone(),
+                    self.clone(),
+                ));
+                let rule_cache = self.rule_mut(&rule_name).ok_or(err)?;
                 rule_cache
                     .add_action(base_state_hash, new_state_hash)
                     .map_err(|_| {
@@ -184,8 +188,12 @@ impl Cache {
                     ))
                 }),
             None => {
-                self.add_rule(rule_name.clone()).unwrap();
-                let rule_cache = self.rule_mut(&rule_name).unwrap();
+                self.add_rule(rule_name.clone())?;
+                let err = InternalErrorKind::RuleNotFound(NotFoundError::new(
+                    rule_name.clone(),
+                    self.clone(),
+                ));
+                let rule_cache = self.rule_mut(&rule_name).ok_or(err)?;
                 rule_cache
                     .add_condition(base_state_hash, applies)
                     .map_err(|_| {

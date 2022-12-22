@@ -9,7 +9,7 @@ use itertools::Itertools;
 use derive_more::*;
 
 use crate::cache::*;
-use crate::error::ErrorKind;
+use crate::error::*;
 use crate::resource::*;
 use crate::state::*;
 use crate::units::*;
@@ -215,13 +215,18 @@ impl Rule {
             Some(new_state_hash) => Ok((
                 possible_states
                     .state(&new_state_hash)
-                    .expect("Cached new_state should be in possible states")
+                    .ok_or_else(|| {
+                        ErrorKind::StateInPossibleStatesNotFound(NotFoundError::new(
+                            new_state_hash,
+                            possible_states.clone(),
+                        ))
+                    })?
                     .clone(),
                 None,
             )),
             None => {
                 let actions = (self.actions)(base_state.clone());
-                let new_state = base_state.apply_actions(actions);
+                let new_state = base_state.apply_actions(actions)?;
 
                 Resource::check_resource_capacities(resources, &new_state)?;
 

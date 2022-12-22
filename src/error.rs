@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::sync::mpsc::SendError;
 
 use crate::cache::*;
 use crate::resource::*;
@@ -135,6 +136,12 @@ impl InternalError {
     pub fn message(&self) -> &str {
         &self.message
     }
+
+    pub fn from_error<E: Debug>(error: E) -> Self {
+        Self {
+            message: format!("{:#?}", error),
+        }
+    }
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -143,6 +150,15 @@ pub(crate) enum InternalErrorKind {
     ConditionAlreadyExists(AlreadyExistsError<(StateHash, RuleApplies), Cache>),
     ActionAlreadyExists(AlreadyExistsError<(StateHash, StateHash), Cache>),
     RuleAlreadyExists(AlreadyExistsError<RuleName, Cache>),
+    RuleNotFound(NotFoundError<RuleName, Cache>),
+    ConditionCacheUpdateSendError(SendError<ConditionCacheUpdate>),
+    ActionCacheUpdateSendError(SendError<ActionCacheUpdate>),
+}
+
+impl InternalErrorKind {
+    pub(crate) fn to_error_kind(&self) -> ErrorKind {
+        ErrorKind::InternalError(InternalError::from_error(self))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

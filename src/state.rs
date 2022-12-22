@@ -156,17 +156,21 @@ impl State {
     }
 
     // TODO: check for multiple actions applying to one resource
-    pub(crate) fn apply_actions(&self, actions: HashMap<ActionName, Action>) -> State {
+    pub(crate) fn apply_actions(&self, actions: HashMap<ActionName, Action>) -> Result<State, ErrorKind> {
         let mut new_state = self.clone();
         for (_, action) in actions {
+            let err = ErrorKind::EntityNotFound(NotFoundError::new(
+                action.target().clone(),
+                new_state.clone(),
+            ));
             new_state
                 .entities
                 .get_mut(action.target())
-                .expect("Entity {action.entity} not found in state")
+                .ok_or(err)?
                 .resources
                 .insert(action.resource().clone(), action.amount());
         }
-        new_state
+        Ok(new_state)
     }
 
     pub(crate) fn reachable_states(
@@ -224,8 +228,7 @@ impl State {
                 }
                 let new_state_hash = StateHash::from_state(&new_state);
                 new_possible_states
-                    .append_state(new_state_hash, new_state)
-                    .expect("State {state_hash} already exists in possible_states");
+                    .append_state(new_state_hash, new_state)?;
                 reachable_states_by_rule_probability_weight.insert(new_state_hash, rule.weight());
             }
         }
@@ -233,9 +236,7 @@ impl State {
         let mut new_reachable_states = ReachableStates::new();
 
         if new_base_state_probability > Probability::from(0.) {
-            new_reachable_states
-                .append_state(base_state_hash, new_base_state_probability)
-                .unwrap();
+            new_reachable_states.append_state(base_state_hash, new_base_state_probability)?;
         }
 
         let probabilities_for_reachable_states_from_base_state = self
@@ -503,27 +504,32 @@ impl ReachableStates {
                     resources,
                 )?;
             for cache_update in condition_cache_updates {
-                condition_cache_updates_tx.send(cache_update).unwrap();
+                condition_cache_updates_tx.send(cache_update).map_err(|e| {
+                    ErrorKind::InternalError(InternalError::from_error(
+                        InternalErrorKind::ConditionCacheUpdateSendError(e),
+                    ))
+                })?;
             }
             for cache_update in action_cache_update {
-                action_cache_updates_tx.send(cache_update).unwrap();
+                action_cache_updates_tx.send(cache_update).map_err(|e| {
+                    InternalErrorKind::ActionCacheUpdateSendError(e).to_error_kind()
+                })?;
             }
             possible_states
-                .append_states(&new_possible_states)
-                .expect("Possible states already exist");
-            new_reachable_states
-                .append_states(&new_reachable_states_from_base_state)
-                .unwrap();
+                .append_states(&new_possible_states)?;
+            new_reachable_states.append_states(&new_reachable_states_from_base_state)?;
         }
 
         while let Result::Ok(condition_cache_update) = condition_cache_updates_rx.try_recv() {
             cache
                 .apply_condition_update(condition_cache_update)
-                .unwrap();
+                .map_err(|e| e.to_error_kind())?;
         }
 
         while let Result::Ok(action_cache_update) = action_cache_updates_rx.try_recv() {
-            cache.apply_action_update(action_cache_update).unwrap();
+            cache
+                .apply_action_update(action_cache_update)
+                .map_err(|e| e.to_error_kind())?;
         }
         debug_assert!(
             !(Probability::from(0.9999999) < self.probability_sum()
@@ -706,7 +712,7 @@ mod tests {
                 ),
             ),
         ]);
-        let new_state = state.apply_actions(actions);
+        let new_state = state.apply_actions(actions).unwrap();
         assert_eq!(
             new_state,
             State::from_entities(vec![(
