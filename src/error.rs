@@ -173,4 +173,5 @@ pub enum ErrorKind {
     ProbabilityOutOfRange(OutOfRangeError<Probability>),
     InternalError(InternalError),
     StateAlreadyExists(AlreadyExistsError<StateHash, State>),
+    ResourceAlreadyAffected(AlreadyExistsError<ResourceName, EntityName>),
 }
