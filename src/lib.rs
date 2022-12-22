@@ -179,12 +179,8 @@ impl Simulation {
 
     /// Runs the simulation for one timestep.
     pub fn next_step(&mut self) -> Result<(), ErrorKind> {
-        self.reachable_states.apply_rules(
-            &mut self.possible_states,
-            &mut self.cache,
-            &self.resources,
-            &self.rules,
-        )?;
+        let rules = self.rules.clone();
+        self.update_reachable_states(&rules)?;
         self.entropy = self.reachable_states.entropy();
         self.time.increment();
         Ok(())
@@ -197,15 +193,22 @@ impl Simulation {
         Ok(())
     }
 
-    pub fn update_reachable_states(
+    pub fn apply_intervention(&mut self, rules: &HashMap<RuleName, Rule>) -> Result<(), ErrorKind> {
+        self.update_reachable_states(rules)?;
+        self.entropy = self.reachable_states.entropy();
+        self.time.increment();
+        Ok(())
+    }
+
+    fn update_reachable_states(
         &mut self,
-        rules: HashMap<RuleName, Rule>,
+        rules: &HashMap<RuleName, Rule>,
     ) -> Result<(), ErrorKind> {
         self.reachable_states.apply_rules(
             &mut self.possible_states,
             &mut self.cache,
             &self.resources,
-            &rules,
+            rules,
         )
     }
 
