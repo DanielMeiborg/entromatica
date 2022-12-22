@@ -50,7 +50,7 @@ jobs:
         run: cargo test
 
   should-publish:
-    name: Check if version changed
+    name: Check if version changed and if it is semver compliant
     runs-on: ubuntu-latest
     outputs:
       is_new_version: ${{ steps.check.outputs.is_new_version }}
@@ -92,29 +92,8 @@ jobs:
           export TAG_NAME="v$(./scripts/get_current_version.sh $PACKAGE_NAME)"
           echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
 
-  pre-publish-checks:
-    name: Check for semver compliance
-    runs-on: ubuntu-latest
-    needs:
-      - lint-and-test
-      - should-publish
-    if: needs.should-publish.outputs.is_new_version == 'yes'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          persist-credentials: false
-
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - uses: Swatinem/rust-cache@v2
-
       - name: Check semver
+        if: steps.check.outputs.is_new_version == 'yes'
         run: |
           cargo install cargo-semver-checks
           cargo semver-checks check-release
@@ -125,7 +104,6 @@ jobs:
     needs:
       - lint-and-test
       - should-publish
-      - pre-publish-checks
     if: needs.should-publish.outputs.is_new_version == 'yes' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
