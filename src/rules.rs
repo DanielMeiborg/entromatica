@@ -123,7 +123,7 @@ impl ProbabilityWeight {
 }
 
 /// An abstraction over the transition rates of the underlying markov chain.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct Rule {
     description: String,
 

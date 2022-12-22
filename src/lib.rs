@@ -194,6 +194,14 @@ impl Simulation {
     }
 
     pub fn apply_intervention(&mut self, rules: &HashMap<RuleName, Rule>) -> Result<(), ErrorKind> {
+        for rule_name in rules.keys() {
+            if self.rules.contains_key(rule_name) {
+                return Err(ErrorKind::RuleAlreadyExists(AlreadyExistsError::new(
+                    rule_name.clone(),
+                    self.rules().clone(),
+                )));
+            }
+        }
         self.update_reachable_states(rules)?;
         self.entropy = self.reachable_states.entropy();
         self.time.increment();
