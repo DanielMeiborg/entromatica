@@ -155,17 +155,25 @@ impl State {
         self.entities.iter_mut()
     }
 
-    // TODO: check for multiple actions applying to one resource
     pub(crate) fn apply_actions(
         &self,
         actions: HashMap<ActionName, Action>,
     ) -> Result<State, ErrorKind> {
         let mut new_state = self.clone();
+        let mut affected_resources: HashSet<(EntityName, ResourceName)> = HashSet::new();
         for (_, action) in actions {
             let err = ErrorKind::EntityNotFound(NotFoundError::new(
                 action.target().clone(),
                 new_state.clone(),
             ));
+            if affected_resources.contains(&(action.target().clone(), action.resource().clone())) {
+                return Err(ErrorKind::ResourceAlreadyAffected(AlreadyExistsError::new(
+                    action.resource().clone(),
+                    action.target().clone(),
+                )));
+            } else {
+                affected_resources.insert((action.target().clone(), action.resource().clone()));
+            }
             new_state
                 .entities
                 .get_mut(action.target())
@@ -726,6 +734,45 @@ mod tests {
                     ),
                 ]),
             )])
+        );
+    }
+
+    #[test]
+    fn apply_actions_should_return_error_on_multiple_actions_affecting_the_same_resource() {
+        let state = State::from_entities(vec![(
+            EntityName::from("A".to_string()),
+            Entity::from_resources(vec![
+                (ResourceName::from("Resource".to_string()), Amount::from(0.)),
+                (
+                    ResourceName::from("Resource2".to_string()),
+                    Amount::from(0.),
+                ),
+            ]),
+        )]);
+        let actions = HashMap::from([
+            (
+                ActionName::from("Action 1".to_string()),
+                Action::from(
+                    ResourceName::from("Resource".to_string()),
+                    EntityName::from("A".to_string()),
+                    Amount::from(1.),
+                ),
+            ),
+            (
+                ActionName::from("Action 2".to_string()),
+                Action::from(
+                    ResourceName::from("Resource".to_string()),
+                    EntityName::from("A".to_string()),
+                    Amount::from(2.),
+                ),
+            ),
+        ]);
+        assert_eq!(
+            state.apply_actions(actions),
+            Err(ErrorKind::ResourceAlreadyAffected(AlreadyExistsError::new(
+                ResourceName::from("Resource".to_string()),
+                EntityName::from("A".to_string()),
+            )))
         );
     }
 
