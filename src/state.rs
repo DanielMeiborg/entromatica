@@ -531,6 +531,8 @@ impl ReachableStates {
             new_reachable_states.append_states(&new_reachable_states_from_base_state)?;
         }
 
+        *self = new_reachable_states;
+
         while let Result::Ok(condition_cache_update) = condition_cache_updates_rx.try_recv() {
             cache
                 .apply_condition_update(condition_cache_update)
