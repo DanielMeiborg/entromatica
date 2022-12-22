@@ -339,9 +339,9 @@ impl PossibleStates {
         state: State,
     ) -> Result<(), ErrorKind> {
         if self.state(&state_hash).is_some() {
-            return Err(ErrorKind::StateAlreadyExists(AlreadyExistsError::new(
-                state_hash, state,
-            )));
+            return Err(ErrorKind::StateInPossibleStatesAlreadyExists(
+                AlreadyExistsError::new((state_hash, state), self.clone()),
+            ));
         }
         self.0.insert(state_hash, state);
         Ok(())

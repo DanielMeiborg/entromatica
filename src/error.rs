@@ -176,7 +176,7 @@ pub enum ErrorKind {
     AmountIsNegative(OutOfRangeError<Amount>),
     ProbabilityOutOfRange(OutOfRangeError<Probability>),
     InternalError(InternalError),
-    StateAlreadyExists(AlreadyExistsError<StateHash, State>),
+    StateInPossibleStatesAlreadyExists(AlreadyExistsError<(StateHash, State), PossibleStates>),
     ResourceAlreadyAffected(AlreadyExistsError<ResourceName, EntityName>),
     RuleAlreadyExists(AlreadyExistsError<RuleName, HashMap<RuleName, Rule>>),
 }
