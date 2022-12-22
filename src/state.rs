@@ -156,7 +156,10 @@ impl State {
     }
 
     // TODO: check for multiple actions applying to one resource
-    pub(crate) fn apply_actions(&self, actions: HashMap<ActionName, Action>) -> Result<State, ErrorKind> {
+    pub(crate) fn apply_actions(
+        &self,
+        actions: HashMap<ActionName, Action>,
+    ) -> Result<State, ErrorKind> {
         let mut new_state = self.clone();
         for (_, action) in actions {
             let err = ErrorKind::EntityNotFound(NotFoundError::new(
@@ -227,8 +230,7 @@ impl State {
                     action_cache_updates.push(cache);
                 }
                 let new_state_hash = StateHash::from_state(&new_state);
-                new_possible_states
-                    .append_state(new_state_hash, new_state)?;
+                new_possible_states.append_state(new_state_hash, new_state)?;
                 reachable_states_by_rule_probability_weight.insert(new_state_hash, rule.weight());
             }
         }
@@ -515,8 +517,7 @@ impl ReachableStates {
                     InternalErrorKind::ActionCacheUpdateSendError(e).to_error_kind()
                 })?;
             }
-            possible_states
-                .append_states(&new_possible_states)?;
+            possible_states.append_states(&new_possible_states)?;
             new_reachable_states.append_states(&new_reachable_states_from_base_state)?;
         }
 
