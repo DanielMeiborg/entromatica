@@ -116,12 +116,11 @@ impl Cache {
         self.rules.get_mut(rule_name)
     }
 
-    pub(self) fn add_rule(
-        &mut self,
-        rule_name: RuleName,
-    ) -> Result<(), AlreadyExistsError<RuleName, Cache>> {
+    pub(self) fn add_rule(&mut self, rule_name: RuleName) -> Result<(), InternalErrorKind> {
         if self.rules.contains_key(&rule_name) {
-            return Err(AlreadyExistsError::new(rule_name, self.clone()));
+            return Err(InternalErrorKind::RuleAlreadyExists(
+                AlreadyExistsError::new(rule_name, self.clone()),
+            ));
         }
         self.rules.insert(rule_name, RuleCache::new());
         Ok(())
@@ -144,20 +143,30 @@ impl Cache {
         rule_name: RuleName,
         base_state_hash: StateHash,
         new_state_hash: StateHash,
-    ) -> Result<(), AlreadyExistsError<(StateHash, StateHash), Cache>> {
+    ) -> Result<(), InternalErrorKind> {
         match self.rule_mut(&rule_name) {
             Some(rule_cache) => rule_cache
                 .add_action(base_state_hash, new_state_hash)
                 .map_err(|_| {
-                    AlreadyExistsError::new((base_state_hash, new_state_hash), self.clone())
+                    InternalErrorKind::ActionAlreadyExists(AlreadyExistsError::new(
+                        (base_state_hash, new_state_hash),
+                        self.clone(),
+                    ))
                 }),
             None => {
-                self.add_rule(rule_name.clone()).unwrap();
-                let rule_cache = self.rule_mut(&rule_name).unwrap();
+                self.add_rule(rule_name.clone())?;
+                let err = InternalErrorKind::RuleNotFound(NotFoundError::new(
+                    rule_name.clone(),
+                    self.clone(),
+                ));
+                let rule_cache = self.rule_mut(&rule_name).ok_or(err)?;
                 rule_cache
                     .add_action(base_state_hash, new_state_hash)
                     .map_err(|_| {
-                        AlreadyExistsError::new((base_state_hash, new_state_hash), self.clone())
+                        InternalErrorKind::ActionAlreadyExists(AlreadyExistsError::new(
+                            (base_state_hash, new_state_hash),
+                            self.clone(),
+                        ))
                     })
             }
         }
@@ -168,17 +177,31 @@ impl Cache {
         rule_name: RuleName,
         base_state_hash: StateHash,
         applies: RuleApplies,
-    ) -> Result<(), AlreadyExistsError<(StateHash, RuleApplies), Cache>> {
+    ) -> Result<(), InternalErrorKind> {
         match self.rule_mut(&rule_name) {
             Some(rule_cache) => rule_cache
                 .add_condition(base_state_hash, applies)
-                .map_err(|_| AlreadyExistsError::new((base_state_hash, applies), self.clone())),
+                .map_err(|_| {
+                    InternalErrorKind::ConditionAlreadyExists(AlreadyExistsError::new(
+                        (base_state_hash, applies),
+                        self.clone(),
+                    ))
+                }),
             None => {
-                self.add_rule(rule_name.clone()).unwrap();
-                let rule_cache = self.rule_mut(&rule_name).unwrap();
+                self.add_rule(rule_name.clone())?;
+                let err = InternalErrorKind::RuleNotFound(NotFoundError::new(
+                    rule_name.clone(),
+                    self.clone(),
+                ));
+                let rule_cache = self.rule_mut(&rule_name).ok_or(err)?;
                 rule_cache
                     .add_condition(base_state_hash, applies)
-                    .map_err(|_| AlreadyExistsError::new((base_state_hash, applies), self.clone()))
+                    .map_err(|_| {
+                        InternalErrorKind::ConditionAlreadyExists(AlreadyExistsError::new(
+                            (base_state_hash, applies),
+                            self.clone(),
+                        ))
+                    })
             }
         }
     }
@@ -186,14 +209,14 @@ impl Cache {
     pub fn apply_condition_update(
         &mut self,
         update: ConditionCacheUpdate,
-    ) -> Result<(), AlreadyExistsError<(StateHash, RuleApplies), Cache>> {
+    ) -> Result<(), InternalErrorKind> {
         self.add_condition(update.rule_name, update.base_state_hash, update.applies)
     }
 
     pub fn apply_action_update(
         &mut self,
         update: ActionCacheUpdate,
-    ) -> Result<(), AlreadyExistsError<(StateHash, StateHash), Cache>> {
+    ) -> Result<(), InternalErrorKind> {
         self.add_action(
             update.rule_name,
             update.base_state_hash,
@@ -299,7 +322,6 @@ impl ActionCacheUpdate {
     }
 }
 
-// TODO: Add tests
 #[cfg(test)]
 mod tests {
     use super::*;
