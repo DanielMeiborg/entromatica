@@ -4,6 +4,8 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::sync::mpsc::SendError;
 
+use hashbrown::HashMap;
+
 use crate::cache::*;
 use crate::resource::*;
 use crate::rules::*;
@@ -176,4 +178,5 @@ pub enum ErrorKind {
     InternalError(InternalError),
     StateAlreadyExists(AlreadyExistsError<StateHash, State>),
     ResourceAlreadyAffected(AlreadyExistsError<ResourceName, EntityName>),
+    RuleAlreadyExists(AlreadyExistsError<RuleName, HashMap<RuleName, Rule>>),
 }
