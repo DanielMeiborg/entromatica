@@ -144,6 +144,7 @@ impl InternalError {
     }
 }
 
+#[non_exhaustive]
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum InternalErrorKind {
@@ -161,6 +162,7 @@ impl InternalErrorKind {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     ResourceNotFound(NotFoundError<ResourceName, Entity>),
