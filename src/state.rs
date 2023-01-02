@@ -544,7 +544,7 @@ impl ReachableStates {
                 .apply_action_update(action_cache_update)
                 .map_err(|e| e.to_error_kind())?;
         }
-        self.probability_sum().check_in_bound()?;
+        assert_eq!(self.probability_sum(), Probability::from(1.));
         Ok(())
     }
 }
