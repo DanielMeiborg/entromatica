@@ -164,6 +164,17 @@ impl Probability {
     pub fn to_f64(self) -> f64 {
         self.0
     }
+
+    pub fn check_in_bound(&self) -> Result<(), ErrorKind> {
+        if !(0. ..=1.).contains(&self.0) {
+            return Err(ErrorKind::ProbabilityOutOfRange(OutOfRangeError::new(
+                *self,
+                Probability(0.),
+                Probability(1.),
+            )));
+        }
+        Ok(())
+    }
 }
 
 #[derive(

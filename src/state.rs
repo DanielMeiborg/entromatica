@@ -544,10 +544,7 @@ impl ReachableStates {
                 .apply_action_update(action_cache_update)
                 .map_err(|e| e.to_error_kind())?;
         }
-        debug_assert!(
-            !(Probability::from(0.9999999) < self.probability_sum()
-                && self.probability_sum() < Probability::from(1.0000001))
-        );
+        assert_eq!(self.probability_sum(), Probability::from(1.));
         Ok(())
     }
 }
