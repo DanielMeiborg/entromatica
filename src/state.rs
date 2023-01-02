@@ -418,7 +418,7 @@ impl ReachableStates {
                     )));
                 }
                 *probability += state_probability;
-            }
+            },
             None => {
                 self.0.insert(state_hash, state_probability);
             }
