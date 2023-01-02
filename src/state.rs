@@ -418,7 +418,7 @@ impl ReachableStates {
                     )));
                 }
                 *probability += state_probability;
-            },
+            }
             None => {
                 self.0.insert(state_hash, state_probability);
             }
@@ -544,10 +544,7 @@ impl ReachableStates {
                 .apply_action_update(action_cache_update)
                 .map_err(|e| e.to_error_kind())?;
         }
-        debug_assert!(
-            !(Probability::from(0.9999999) < self.probability_sum()
-                && self.probability_sum() < Probability::from(1.0000001))
-        );
+        self.probability_sum().check_in_bound()?;
         Ok(())
     }
 }
