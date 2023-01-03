@@ -516,7 +516,11 @@ impl ReachableStates {
         while let Result::Ok(action_cache_update) = action_cache_updates_rx.try_recv() {
             cache.apply_action_update(action_cache_update)?;
         }
-        assert_eq!(self.probability_sum(), Probability::from(1.));
+        ensure!(
+            self.probability_sum() == Probability::from(1.),
+            "Probability sum is not 1 but {}",
+            self.probability_sum()
+        );
         Ok(())
     }
 }
