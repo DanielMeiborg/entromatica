@@ -6,10 +6,10 @@ use hashbrown::{HashMap, HashSet};
 #[allow(unused_imports)]
 use itertools::Itertools;
 
+use anyhow::anyhow;
 use derive_more::*;
 
 use crate::cache::*;
-use crate::error::*;
 use crate::resource::*;
 use crate::state::*;
 use crate::units::*;
@@ -210,16 +210,15 @@ impl Rule {
         base_state_hash: StateHash,
         base_state: State,
         resources: &HashMap<ResourceName, Resource>,
-    ) -> Result<(State, Option<ActionCacheUpdate>), ErrorKind> {
+    ) -> anyhow::Result<(State, Option<ActionCacheUpdate>)> {
         match cache.action(&rule_name, &base_state_hash) {
             Some(new_state_hash) => Ok((
                 possible_states
                     .state(&new_state_hash)
                     .ok_or_else(|| {
-                        ErrorKind::StateInPossibleStatesNotFound(NotFoundError::new(
-                            new_state_hash,
-                            possible_states.clone(),
-                        ))
+                        anyhow!(
+                            "Could not find state with hash {new_state_hash} in possible states"
+                        )
                     })?
                     .clone(),
                 None,

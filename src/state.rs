@@ -8,11 +8,11 @@ use hashbrown::{HashMap, HashSet};
 #[allow(unused_imports)]
 use itertools::Itertools;
 
+use anyhow::{anyhow, ensure};
 use derive_more::*;
 use rayon::prelude::*;
 
 use crate::cache::*;
-use crate::error::*;
 use crate::resource::*;
 use crate::rules::*;
 use crate::units::*;
@@ -46,16 +46,16 @@ impl Entity {
         }
     }
 
-    pub fn resource(&self, resource_name: &ResourceName) -> Result<&Amount, ErrorKind> {
-        self.resources.get(resource_name).ok_or_else(|| {
-            ErrorKind::ResourceNotFound(NotFoundError::new(resource_name.clone(), self.clone()))
-        })
+    pub fn resource(&self, resource_name: &ResourceName) -> anyhow::Result<&Amount> {
+        self.resources
+            .get(resource_name)
+            .ok_or_else(|| anyhow!("Resource '{}' not found", resource_name))
     }
 
-    pub fn resource_mut(&mut self, resource_name: &ResourceName) -> Result<&mut Amount, ErrorKind> {
-        let err =
-            ErrorKind::ResourceNotFound(NotFoundError::new(resource_name.clone(), self.clone()));
-        self.resources.get_mut(resource_name).ok_or(err)
+    pub fn resource_mut(&mut self, resource_name: &ResourceName) -> anyhow::Result<&mut Amount> {
+        self.resources
+            .get_mut(resource_name)
+            .ok_or_else(|| anyhow!("Resource '{}' not found", resource_name))
     }
 
     pub fn iter_resources(&self) -> impl Iterator<Item = (&ResourceName, &Amount)> {
@@ -136,15 +136,16 @@ impl State {
         }
     }
 
-    pub fn entity(&self, entity_name: &EntityName) -> Result<&Entity, ErrorKind> {
-        self.entities.get(entity_name).ok_or_else(|| {
-            ErrorKind::EntityNotFound(NotFoundError::new(entity_name.clone(), self.clone()))
-        })
+    pub fn entity(&self, entity_name: &EntityName) -> anyhow::Result<&Entity> {
+        self.entities
+            .get(entity_name)
+            .ok_or_else(|| anyhow!("Entity '{}' not found", entity_name))
     }
 
-    pub fn entity_mut(&mut self, entity_name: &EntityName) -> Result<&mut Entity, ErrorKind> {
-        let err = ErrorKind::EntityNotFound(NotFoundError::new(entity_name.clone(), self.clone()));
-        self.entities.get_mut(entity_name).ok_or(err)
+    pub fn entity_mut(&mut self, entity_name: &EntityName) -> anyhow::Result<&mut Entity> {
+        self.entities
+            .get_mut(entity_name)
+            .ok_or_else(|| anyhow!("Entity '{}' not found", entity_name))
     }
 
     pub fn iter_entities(&self) -> impl Iterator<Item = (&EntityName, &Entity)> {
@@ -158,26 +159,20 @@ impl State {
     pub(crate) fn apply_actions(
         &self,
         actions: HashMap<ActionName, Action>,
-    ) -> Result<State, ErrorKind> {
+    ) -> anyhow::Result<State> {
         let mut new_state = self.clone();
         let mut affected_resources: HashSet<(EntityName, ResourceName)> = HashSet::new();
         for (_, action) in actions {
-            let err = ErrorKind::EntityNotFound(NotFoundError::new(
-                action.target().clone(),
-                new_state.clone(),
-            ));
-            if affected_resources.contains(&(action.target().clone(), action.resource().clone())) {
-                return Err(ErrorKind::ResourceAlreadyAffected(AlreadyExistsError::new(
-                    action.resource().clone(),
-                    action.target().clone(),
-                )));
-            } else {
-                affected_resources.insert((action.target().clone(), action.resource().clone()));
-            }
+            ensure!(
+                !affected_resources.contains(&(action.target().clone(), action.resource().clone())),
+                "Resource '{}' is already affected",
+                action.resource()
+            );
+            affected_resources.insert((action.target().clone(), action.resource().clone()));
             new_state
                 .entities
                 .get_mut(action.target())
-                .ok_or(err)?
+                .ok_or_else(|| anyhow!("Entity {} not found", action.target()))?
                 .resources
                 .insert(action.resource().clone(), action.amount());
         }
@@ -191,15 +186,12 @@ impl State {
         possible_states: &PossibleStates,
         cache: &Cache,
         resources: &HashMap<ResourceName, Resource>,
-    ) -> Result<
-        (
-            ReachableStates,
-            PossibleStates,
-            Vec<ConditionCacheUpdate>,
-            Vec<ActionCacheUpdate>,
-        ),
-        ErrorKind,
-    > {
+    ) -> anyhow::Result<(
+        ReachableStates,
+        PossibleStates,
+        Vec<ConditionCacheUpdate>,
+        Vec<ActionCacheUpdate>,
+    )> {
         let base_state_hash = StateHash::from_state(self);
         let mut new_base_state_probability: Probability = *base_state_probability;
         let mut applying_rules_probability_weight_sum = ProbabilityWeight::from(0.);
@@ -213,10 +205,7 @@ impl State {
 
         for (rule_name, rule) in rules {
             let base_state = possible_states.state(&base_state_hash).ok_or_else(|| {
-                ErrorKind::StateInPossibleStatesNotFound(NotFoundError::new(
-                    base_state_hash,
-                    possible_states.clone(),
-                ))
+                anyhow!("State '{}' not found in possible states", base_state_hash)
             })?;
             let (rule_applies, condition_cache_update) =
                 rule.applies(cache, rule_name.clone(), base_state.clone());
@@ -337,19 +326,18 @@ impl PossibleStates {
         &mut self,
         state_hash: StateHash,
         state: State,
-    ) -> Result<(), ErrorKind> {
+    ) -> anyhow::Result<()> {
         if let Some(present_state) = self.state(&state_hash) {
-            if state != *present_state {
-                return Err(ErrorKind::StateInPossibleStatesAlreadyExists(
-                    AlreadyExistsError::new((state_hash, state), self.clone()),
-                ));
-            }
+            ensure!(
+                state == *present_state,
+                "Cannot overwrite state {state_hash} with current value {present_state} with new value {state}",
+            );
         }
         self.0.insert(state_hash, state);
         Ok(())
     }
 
-    pub(crate) fn append_states(&mut self, states: &PossibleStates) -> Result<(), ErrorKind> {
+    pub(crate) fn append_states(&mut self, states: &PossibleStates) -> anyhow::Result<()> {
         for (state_hash, state) in states.iter() {
             self.append_state(*state_hash, state.clone())?;
         }
@@ -407,16 +395,13 @@ impl ReachableStates {
         &mut self,
         state_hash: StateHash,
         state_probability: Probability,
-    ) -> Result<(), ErrorKind> {
+    ) -> anyhow::Result<()> {
         match self.0.get_mut(&state_hash) {
             Some(probability) => {
-                if *probability + state_probability > Probability::from(1.) {
-                    return Err(ErrorKind::ProbabilityOutOfRange(OutOfRangeError::new(
-                        *probability + state_probability,
-                        Probability::from(0.),
-                        Probability::from(1.),
-                    )));
-                }
+                ensure!(
+                    *probability + state_probability <= Probability::from(1.),
+                    "Probability of state {state_hash} is out of range: {probability} + {state_probability} > 1",
+                );
                 *probability += state_probability;
             }
             None => {
@@ -426,7 +411,7 @@ impl ReachableStates {
         Ok(())
     }
 
-    pub fn append_states(&mut self, states: &ReachableStates) -> Result<(), ErrorKind> {
+    pub fn append_states(&mut self, states: &ReachableStates) -> anyhow::Result<()> {
         for (state_hash, state_probability) in states.iter() {
             self.append_state(*state_hash, *state_probability)?;
         }
@@ -489,7 +474,7 @@ impl ReachableStates {
         cache: &mut Cache,
         resources: &HashMap<ResourceName, Resource>,
         rules: &HashMap<RuleName, Rule>,
-    ) -> Result<(), ErrorKind> {
+    ) -> anyhow::Result<()> {
         let (condition_cache_updates_tx, condition_cache_updates_rx) = mpsc::channel();
         let (action_cache_updates_tx, action_cache_updates_rx) = mpsc::channel();
 
@@ -503,10 +488,7 @@ impl ReachableStates {
             ) = possible_states
                 .state(base_state_hash)
                 .ok_or_else(|| {
-                    ErrorKind::StateInPossibleStatesNotFound(NotFoundError::new(
-                        *base_state_hash,
-                        possible_states.clone(),
-                    ))
+                    anyhow::anyhow!("Base state {base_state_hash} not found in possible_states")
                 })?
                 .reachable_states(
                     base_state_probability,
@@ -516,16 +498,10 @@ impl ReachableStates {
                     resources,
                 )?;
             for cache_update in condition_cache_updates {
-                condition_cache_updates_tx.send(cache_update).map_err(|e| {
-                    ErrorKind::InternalError(InternalError::from_error(
-                        InternalErrorKind::ConditionCacheUpdateSendError(e),
-                    ))
-                })?;
+                condition_cache_updates_tx.send(cache_update)?;
             }
             for cache_update in action_cache_update {
-                action_cache_updates_tx.send(cache_update).map_err(|e| {
-                    InternalErrorKind::ActionCacheUpdateSendError(e).to_error_kind()
-                })?;
+                action_cache_updates_tx.send(cache_update)?;
             }
             possible_states.append_states(&new_possible_states)?;
             new_reachable_states.append_states(&new_reachable_states_from_base_state)?;
@@ -534,15 +510,11 @@ impl ReachableStates {
         *self = new_reachable_states;
 
         while let Result::Ok(condition_cache_update) = condition_cache_updates_rx.try_recv() {
-            cache
-                .apply_condition_update(condition_cache_update)
-                .map_err(|e| e.to_error_kind())?;
+            cache.apply_condition_update(condition_cache_update)?;
         }
 
         while let Result::Ok(action_cache_update) = action_cache_updates_rx.try_recv() {
-            cache
-                .apply_action_update(action_cache_update)
-                .map_err(|e| e.to_error_kind())?;
+            cache.apply_action_update(action_cache_update)?;
         }
         assert_eq!(self.probability_sum(), Probability::from(1.));
         Ok(())
@@ -560,8 +532,9 @@ mod tests {
         assert_eq!(
             entity
                 .resource(&ResourceName::from("resource".to_string()))
-                .cloned(),
-            Result::Ok(Amount::from(1.))
+                .unwrap()
+                .clone(),
+            Amount::from(1.)
         );
     }
 
@@ -569,13 +542,9 @@ mod tests {
     fn entity_get_resource_should_return_error_on_missing_resource() {
         let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
         let entity = Entity::from_resources(resources);
-        assert_eq!(
-            entity.resource(&ResourceName::from("missing_resource".to_string())),
-            Result::Err(ErrorKind::ResourceNotFound(NotFoundError::new(
-                ResourceName::from("missing_resource".to_string()),
-                entity.clone()
-            )))
-        );
+        entity
+            .resource(&ResourceName::from("missing_resource".to_string()))
+            .unwrap_err();
     }
 
     #[test]
@@ -625,11 +594,14 @@ mod tests {
         )]);
 
         assert_eq!(
-            state.entity(&EntityName::from("A".to_string()),).cloned(),
-            Ok(Entity::from_resources(vec![(
+            state
+                .entity(&EntityName::from("A".to_string()),)
+                .unwrap()
+                .clone(),
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
-            )]))
+            )])
         );
     }
 
@@ -642,15 +614,9 @@ mod tests {
                 Amount::from(0.),
             )]),
         )]);
-        assert_eq!(
-            state
-                .entity(&EntityName::from("missing_entity".to_string()))
-                .cloned(),
-            Err(ErrorKind::EntityNotFound(NotFoundError::new(
-                EntityName::from("missing_entity".to_string()),
-                state
-            )))
-        );
+        state
+            .entity(&EntityName::from("missing_entity".to_string()))
+            .unwrap_err();
     }
 
     #[test]
@@ -664,11 +630,13 @@ mod tests {
         )]);
 
         assert_eq!(
-            state.entity_mut(&EntityName::from("A".to_string()),),
-            Ok(&mut Entity::from_resources(vec![(
+            state
+                .entity_mut(&EntityName::from("A".to_string()),)
+                .unwrap(),
+            &mut Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
-            )]))
+            )])
         );
     }
 
@@ -681,15 +649,9 @@ mod tests {
                 Amount::from(0.),
             )]),
         )]);
-        assert_eq!(
-            state
-                .entity_mut(&EntityName::from("missing_entity".to_string()))
-                .cloned(),
-            Err(ErrorKind::EntityNotFound(NotFoundError::new(
-                EntityName::from("missing_entity".to_string()),
-                state
-            )))
-        );
+        state
+            .entity_mut(&EntityName::from("missing_entity".to_string()))
+            .unwrap_err();
     }
 
     #[test]
@@ -768,13 +730,7 @@ mod tests {
                 ),
             ),
         ]);
-        assert_eq!(
-            state.apply_actions(actions),
-            Err(ErrorKind::ResourceAlreadyAffected(AlreadyExistsError::new(
-                ResourceName::from("Resource".to_string()),
-                EntityName::from("A".to_string()),
-            )))
-        );
+        state.apply_actions(actions).unwrap_err();
     }
 
     #[test]

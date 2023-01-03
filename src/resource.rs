@@ -7,7 +7,8 @@ use hashbrown::{HashMap, HashSet};
 #[allow(unused_imports)]
 use itertools::Itertools;
 
-use crate::error::*;
+use anyhow::ensure;
+
 use crate::state::*;
 use crate::units::*;
 
@@ -92,7 +93,7 @@ impl Resource {
     pub(crate) fn check_resource_capacities(
         resources: &HashMap<ResourceName, Resource>,
         state: &State,
-    ) -> Result<(), ErrorKind> {
+    ) -> anyhow::Result<()> {
         for (resource_name, resource) in resources {
             match &resource.capacity {
                 Capacity::Limited(limit) => {
@@ -100,22 +101,20 @@ impl Resource {
                     for (_, entity) in state.iter_entities() {
                         let entity_amount = entity.resource(resource_name)?;
                         total_amount += *entity_amount;
-                        if total_amount > *limit || total_amount < Amount::from(0.) {
-                            return Err(ErrorKind::TotalAmountExceedsResourceLimit(
-                                OutOfRangeError::new(total_amount, Amount::from(0.), *limit),
-                            ));
-                        }
+                        ensure!(
+                            total_amount <= *limit && total_amount >= Amount::from(0.),
+                            "Total amount of resource {resource_name} exceeds resource limit with {total_amount} outside of range 0, {limit}"
+                        );
                     }
                 }
                 Capacity::Unlimited => {
                     for (_, entity) in state.iter_entities() {
                         let entity_amount = entity.resource(resource_name)?;
                         if *entity_amount < Amount::from(0.) {
-                            return Err(ErrorKind::AmountIsNegative(OutOfRangeError::new(
-                                *entity_amount,
-                                Amount::from(0.),
-                                Amount::from(f64::INFINITY),
-                            )));
+                            ensure!(
+                                *entity_amount >= Amount::from(0.),
+                                "Amount of resource {resource_name} is negative with {entity_amount}"
+                            );
                         }
                     }
                 }
@@ -123,15 +122,12 @@ impl Resource {
 
             match &resource.capacity_per_entity {
                 Capacity::Limited(limit) => {
-                    for (_, entity) in state.iter_entities() {
+                    for (entity_name, entity) in state.iter_entities() {
                         let entity_amount = entity.resource(resource_name)?;
-                        if entity_amount > limit {
-                            return Err(ErrorKind::AmountExceedsEntityLimit(OutOfRangeError::new(
-                                *entity_amount,
-                                Amount::from(0.),
-                                *limit,
-                            )));
-                        }
+                        ensure!(
+                                *entity_amount <= *limit && *entity_amount >= Amount::from(0.),
+                                "Amount of resource {resource_name} exceeds entity limit for entity {entity_name} with {entity_amount} outside of range 0, {limit}"
+                            );
                     }
                 }
                 Capacity::Unlimited => {}

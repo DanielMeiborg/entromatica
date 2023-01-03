@@ -1,8 +1,11 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    fmt::Display,
+    hash::{Hash, Hasher},
+};
 
+use anyhow::{ensure, Ok};
 use derive_more::*;
 
-use crate::error::*;
 use crate::rules::*;
 
 #[derive(
@@ -11,7 +14,6 @@ use crate::rules::*;
     Copy,
     Default,
     Debug,
-    Display,
     Into,
     AsRef,
     AsMut,
@@ -43,10 +45,14 @@ impl PartialEq for Amount {
 
 impl From<f64> for Amount {
     fn from(amount: f64) -> Self {
-        if amount < 0. {
-            panic!("{:#?}", OutOfRangeError::new(amount, 0., f64::INFINITY));
-        }
+        debug_assert!(amount >= 0.);
         Self(amount)
+    }
+}
+
+impl std::fmt::Display for Amount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -62,7 +68,6 @@ impl Amount {
     Copy,
     Default,
     Debug,
-    Display,
     Into,
     AsRef,
     AsMut,
@@ -94,10 +99,14 @@ impl PartialEq for Entropy {
 
 impl From<f64> for Entropy {
     fn from(entropy: f64) -> Self {
-        if entropy < 0. {
-            panic!("{:#?}", OutOfRangeError::new(entropy, 0., f64::INFINITY));
-        }
+        debug_assert!(entropy >= 0.);
         Self(entropy)
+    }
+}
+
+impl std::fmt::Display for Entropy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -113,7 +122,6 @@ impl Entropy {
     Copy,
     Default,
     Debug,
-    Display,
     Into,
     AsRef,
     AsMut,
@@ -145,10 +153,14 @@ impl PartialEq for Probability {
 
 impl From<f64> for Probability {
     fn from(probability: f64) -> Self {
-        if !(0. ..=1.).contains(&probability) {
-            panic!("{:#?}", OutOfRangeError::new(probability, 0., 1.));
-        }
+        debug_assert!((0. ..=1.).contains(&probability));
         Self(probability)
+    }
+}
+
+impl Display for Probability {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -165,14 +177,12 @@ impl Probability {
         self.0
     }
 
-    pub fn check_in_bound(&self) -> Result<(), ErrorKind> {
-        if !(0. ..=1.).contains(&self.0) {
-            return Err(ErrorKind::ProbabilityOutOfRange(OutOfRangeError::new(
-                *self,
-                Probability(0.),
-                Probability(1.),
-            )));
-        }
+    pub fn check_in_bound(&self) -> anyhow::Result<()> {
+        ensure!(
+            (0. ..=1.).contains(&self.0),
+            "Probability is out of bound [0, 1] with {}",
+            self.0
+        );
         Ok(())
     }
 }
@@ -187,7 +197,6 @@ impl Probability {
     Copy,
     Default,
     Debug,
-    Display,
     Into,
     AsRef,
     AsMut,
@@ -207,10 +216,13 @@ pub struct Time(i64);
 
 impl From<i64> for Time {
     fn from(time: i64) -> Self {
-        if time < 0 {
-            panic!("{:#?}", OutOfRangeError::new(time, 0, i64::MAX));
-        }
         Self(time)
+    }
+}
+
+impl std::fmt::Display for Time {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

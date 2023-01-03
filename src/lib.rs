@@ -7,6 +7,7 @@ use itertools::Itertools;
 #[allow(unused_imports)]
 use rayon::prelude::*;
 
+use anyhow::ensure;
 use petgraph::Graph;
 
 pub mod state;
@@ -23,10 +24,6 @@ use rules::*;
 
 mod cache;
 use cache::*;
-
-pub mod error;
-#[allow(unused_imports)]
-use error::*;
 
 /// All information and methods needed to run the simulation.
 ///
@@ -118,16 +115,14 @@ impl Simulation {
         resources: HashMap<ResourceName, Resource>,
         initial_state: State,
         rules: HashMap<RuleName, Rule>,
-    ) -> Result<Simulation, ErrorKind> {
+    ) -> anyhow::Result<Simulation> {
         let initial_state_hash = StateHash::from_state(&initial_state);
-        for (_, entity) in initial_state.iter_entities() {
+        for (entity_name, entity) in initial_state.iter_entities() {
             for (resource_name, _) in entity.iter_resources() {
-                if !resources.contains_key(resource_name) {
-                    return Err(ErrorKind::ResourceNotFound(NotFoundError::new(
-                        resource_name.clone(),
-                        entity.clone(),
-                    )));
-                }
+                ensure!(
+                    resources.contains_key(resource_name),
+                    "Resource {resource_name} not found in entity {entity_name}",
+                );
             }
         }
 
@@ -178,7 +173,7 @@ impl Simulation {
     }
 
     /// Runs the simulation for one timestep.
-    pub fn next_step(&mut self) -> Result<(), ErrorKind> {
+    pub fn next_step(&mut self) -> anyhow::Result<()> {
         let rules = self.rules.clone();
         self.update_reachable_states(&rules)?;
         self.entropy = self.reachable_states.entropy();
@@ -186,21 +181,19 @@ impl Simulation {
         Ok(())
     }
 
-    pub fn run(&mut self, steps: usize) -> Result<(), ErrorKind> {
+    pub fn run(&mut self, steps: usize) -> anyhow::Result<()> {
         for _ in 0..steps {
             self.next_step()?;
         }
         Ok(())
     }
 
-    pub fn apply_intervention(&mut self, rules: &HashMap<RuleName, Rule>) -> Result<(), ErrorKind> {
+    pub fn apply_intervention(&mut self, rules: &HashMap<RuleName, Rule>) -> anyhow::Result<()> {
         for rule_name in rules.keys() {
-            if self.rules.contains_key(rule_name) {
-                return Err(ErrorKind::RuleAlreadyExists(AlreadyExistsError::new(
-                    rule_name.clone(),
-                    self.rules().clone(),
-                )));
-            }
+            ensure!(
+                !self.rules.contains_key(rule_name),
+                "Rule {rule_name} already exists"
+            );
         }
         self.update_reachable_states(rules)?;
         self.entropy = self.reachable_states.entropy();
@@ -208,10 +201,7 @@ impl Simulation {
         Ok(())
     }
 
-    fn update_reachable_states(
-        &mut self,
-        rules: &HashMap<RuleName, Rule>,
-    ) -> Result<(), ErrorKind> {
+    fn update_reachable_states(&mut self, rules: &HashMap<RuleName, Rule>) -> anyhow::Result<()> {
         self.reachable_states.apply_rules(
             &mut self.possible_states,
             &mut self.cache,
@@ -226,7 +216,7 @@ impl Simulation {
     }
 
     /// Checks if the uniform distribution is a steady state i.e. if the transition rate matrix is doubly statistical.
-    pub fn uniform_distribution_is_steady(&self) -> Result<bool, ErrorKind> {
+    pub fn uniform_distribution_is_steady(&self) -> anyhow::Result<bool> {
         let mut simulation = Simulation::from(
             self.resources.clone(),
             self.initial_state.clone(),

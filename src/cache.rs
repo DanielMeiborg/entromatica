@@ -8,7 +8,8 @@ use itertools::Itertools;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 
-use crate::error::*;
+use anyhow::{anyhow, bail};
+
 use crate::rules::*;
 use crate::state::*;
 
@@ -58,12 +59,13 @@ impl RuleCache {
         &mut self,
         base_state_hash: StateHash,
         applies: RuleApplies,
-    ) -> Result<(), AlreadyExistsError<(StateHash, RuleApplies), RuleCache>> {
+    ) -> anyhow::Result<()> {
         if self.condition.contains_key(&base_state_hash) {
-            return Err(AlreadyExistsError::new(
-                (base_state_hash, applies),
-                self.clone(),
-            ));
+            bail!(
+                "Condition cache cannot overwrite {} with {}",
+                base_state_hash,
+                applies
+            );
         }
         self.condition.insert(base_state_hash, applies);
         Ok(())
@@ -73,12 +75,13 @@ impl RuleCache {
         &mut self,
         base_state_hash: StateHash,
         new_state_hash: StateHash,
-    ) -> Result<(), AlreadyExistsError<(StateHash, StateHash), RuleCache>> {
+    ) -> anyhow::Result<()> {
         if self.actions.contains_key(&base_state_hash) {
-            return Err(AlreadyExistsError::new(
-                (base_state_hash, new_state_hash),
-                self.clone(),
-            ));
+            bail!(
+                "Action cache cannot overwrite {} with {}",
+                base_state_hash,
+                new_state_hash
+            );
         }
         self.actions.insert(base_state_hash, new_state_hash);
         Ok(())
@@ -116,11 +119,9 @@ impl Cache {
         self.rules.get_mut(rule_name)
     }
 
-    pub(self) fn add_rule(&mut self, rule_name: RuleName) -> Result<(), InternalErrorKind> {
+    pub(self) fn add_rule(&mut self, rule_name: RuleName) -> anyhow::Result<()> {
         if self.rules.contains_key(&rule_name) {
-            return Err(InternalErrorKind::RuleAlreadyExists(
-                AlreadyExistsError::new(rule_name, self.clone()),
-            ));
+            bail!("Rule {} already exists", rule_name);
         }
         self.rules.insert(rule_name, RuleCache::new());
         Ok(())
@@ -143,31 +144,19 @@ impl Cache {
         rule_name: RuleName,
         base_state_hash: StateHash,
         new_state_hash: StateHash,
-    ) -> Result<(), InternalErrorKind> {
+    ) -> anyhow::Result<()> {
         match self.rule_mut(&rule_name) {
-            Some(rule_cache) => rule_cache
-                .add_action(base_state_hash, new_state_hash)
-                .map_err(|_| {
-                    InternalErrorKind::ActionAlreadyExists(AlreadyExistsError::new(
-                        (base_state_hash, new_state_hash),
-                        self.clone(),
-                    ))
-                }),
+            Some(rule_cache) => {
+                rule_cache.add_action(base_state_hash, new_state_hash)?;
+                Ok(())
+            }
             None => {
                 self.add_rule(rule_name.clone())?;
-                let err = InternalErrorKind::RuleNotFound(NotFoundError::new(
-                    rule_name.clone(),
-                    self.clone(),
-                ));
-                let rule_cache = self.rule_mut(&rule_name).ok_or(err)?;
-                rule_cache
-                    .add_action(base_state_hash, new_state_hash)
-                    .map_err(|_| {
-                        InternalErrorKind::ActionAlreadyExists(AlreadyExistsError::new(
-                            (base_state_hash, new_state_hash),
-                            self.clone(),
-                        ))
-                    })
+                let rule_cache = self
+                    .rule_mut(&rule_name)
+                    .ok_or_else(|| anyhow!("Could not get mutable rule cache for {}", rule_name))?;
+                rule_cache.add_action(base_state_hash, new_state_hash)?;
+                Ok(())
             }
         }
     }
@@ -177,46 +166,28 @@ impl Cache {
         rule_name: RuleName,
         base_state_hash: StateHash,
         applies: RuleApplies,
-    ) -> Result<(), InternalErrorKind> {
+    ) -> anyhow::Result<()> {
         match self.rule_mut(&rule_name) {
-            Some(rule_cache) => rule_cache
-                .add_condition(base_state_hash, applies)
-                .map_err(|_| {
-                    InternalErrorKind::ConditionAlreadyExists(AlreadyExistsError::new(
-                        (base_state_hash, applies),
-                        self.clone(),
-                    ))
-                }),
+            Some(rule_cache) => {
+                rule_cache.add_condition(base_state_hash, applies)?;
+                Ok(())
+            }
             None => {
                 self.add_rule(rule_name.clone())?;
-                let err = InternalErrorKind::RuleNotFound(NotFoundError::new(
-                    rule_name.clone(),
-                    self.clone(),
-                ));
-                let rule_cache = self.rule_mut(&rule_name).ok_or(err)?;
-                rule_cache
-                    .add_condition(base_state_hash, applies)
-                    .map_err(|_| {
-                        InternalErrorKind::ConditionAlreadyExists(AlreadyExistsError::new(
-                            (base_state_hash, applies),
-                            self.clone(),
-                        ))
-                    })
+                let rule_cache = self
+                    .rule_mut(&rule_name)
+                    .ok_or_else(|| anyhow!("Could not get mutable rule cache for {}", rule_name))?;
+                rule_cache.add_condition(base_state_hash, applies)?;
+                Ok(())
             }
         }
     }
 
-    pub fn apply_condition_update(
-        &mut self,
-        update: ConditionCacheUpdate,
-    ) -> Result<(), InternalErrorKind> {
+    pub fn apply_condition_update(&mut self, update: ConditionCacheUpdate) -> anyhow::Result<()> {
         self.add_condition(update.rule_name, update.base_state_hash, update.applies)
     }
 
-    pub fn apply_action_update(
-        &mut self,
-        update: ActionCacheUpdate,
-    ) -> Result<(), InternalErrorKind> {
+    pub fn apply_action_update(&mut self, update: ActionCacheUpdate) -> anyhow::Result<()> {
         self.add_action(
             update.rule_name,
             update.base_state_hash,

@@ -12,6 +12,7 @@ documentation = "https://docs.rs/entromatica"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = { version = "1.0.68", features = ["backtrace"] }
 derive_more = "0.99.17"
 hashbrown = { version = "0.13.1", features = ["rayon"] }
 itertools = "0.10.5"
