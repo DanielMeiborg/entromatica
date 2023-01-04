@@ -7,7 +7,9 @@ use itertools::Itertools;
 #[allow(unused_imports)]
 use rayon::prelude::*;
 
+use backtrace::Backtrace as trc;
 use petgraph::Graph;
+use thiserror::Error;
 
 pub mod state;
 use state::*;
@@ -24,9 +26,43 @@ use rules::*;
 mod cache;
 use cache::*;
 
-pub mod error;
-#[allow(unused_imports)]
-use error::*;
+#[derive(Debug, Clone, Error)]
+#[error(transparent)]
+pub struct InternalError(#[from] CacheError);
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+pub enum ErrorKind {
+    #[error("EntityError: {0:#?}")]
+    EntityError(#[from] EntityError),
+
+    #[error("Internal error: {0:#?}")]
+    InternalError(#[from] InternalError),
+
+    #[error("ResourceError: {0:#?}")]
+    ResourceError(#[from] ResourceError),
+
+    #[error("PossibleStatesError: {0:#?}")]
+    PossibleStatesError(#[from] PossibleStatesError),
+
+    #[error("RuleError: {0:#?}")]
+    RuleError(#[from] RuleError),
+
+    #[error("UnitsError: {0:#?}")]
+    UnitsError(#[from] UnitsError),
+
+    #[error("StateError: {0:#?}")]
+    StateError(#[from] StateError),
+
+    #[error("ReachableStatesError: {0:#?}")]
+    ReachableStatesError(#[from] ReachableStatesError),
+}
+
+impl From<CacheError> for ErrorKind {
+    fn from(cache_error: CacheError) -> Self {
+        Self::InternalError(InternalError(cache_error))
+    }
+}
 
 /// All information and methods needed to run the simulation.
 ///
@@ -78,21 +114,21 @@ impl Display for Simulation {
         writeln!(f, "  Entropy: {}", self.entropy)?;
         writeln!(f, "  Resources:")?;
         for (resource_name, resource) in self.resources.iter() {
-            writeln!(f, "    {}: {}", resource_name, resource)?;
+            writeln!(f, "    {resource_name}: {resource}")?;
         }
         writeln!(f, "  Initial state:")?;
         writeln!(f, "{}", self.initial_state)?;
         writeln!(f, "  Possible states:")?;
         for (state_hash, state) in self.possible_states.iter() {
-            writeln!(f, "    {}: {}", state_hash, state)?;
+            writeln!(f, "    {state_hash}: {state}")?;
         }
         writeln!(f, "  Reachable states:")?;
         for (state_hash, probability) in self.reachable_states.iter() {
-            writeln!(f, "    {}: {}", state_hash, probability)?;
+            writeln!(f, "    {state_hash}: {probability}")?;
         }
         writeln!(f, "  Rules:")?;
         for (rule_name, rule) in self.rules.iter() {
-            writeln!(f, "    {}: {}", rule_name, rule)?;
+            writeln!(f, "    {rule_name}: {rule}")?;
         }
         Ok(())
     }
@@ -118,15 +154,15 @@ impl Simulation {
         resources: HashMap<ResourceName, Resource>,
         initial_state: State,
         rules: HashMap<RuleName, Rule>,
-    ) -> Result<Simulation, ErrorKind> {
+    ) -> Result<Simulation, EntityError> {
         let initial_state_hash = StateHash::from_state(&initial_state);
         for (_, entity) in initial_state.iter_entities() {
             for (resource_name, _) in entity.iter_resources() {
                 if !resources.contains_key(resource_name) {
-                    return Err(ErrorKind::ResourceNotFound(NotFoundError::new(
-                        resource_name.clone(),
-                        entity.clone(),
-                    )));
+                    return Err(EntityError::ResourceNotFound {
+                        resource_name: resource_name.clone(),
+                        context: trc::new(),
+                    });
                 }
             }
         }
@@ -196,10 +232,10 @@ impl Simulation {
     pub fn apply_intervention(&mut self, rules: &HashMap<RuleName, Rule>) -> Result<(), ErrorKind> {
         for rule_name in rules.keys() {
             if self.rules.contains_key(rule_name) {
-                return Err(ErrorKind::RuleAlreadyExists(AlreadyExistsError::new(
-                    rule_name.clone(),
-                    self.rules().clone(),
-                )));
+                return Err(ErrorKind::from(CacheError::RuleAlreadyExists {
+                    rule_name: rule_name.clone(),
+                    context: trc::new(),
+                }));
             }
         }
         self.update_reachable_states(rules)?;

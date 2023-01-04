@@ -1,9 +1,11 @@
 use std::hash::{Hash, Hasher};
 
+use backtrace::Backtrace as trc;
 use derive_more::*;
+use thiserror::Error;
 
-use crate::error::*;
 use crate::rules::*;
+use crate::*;
 
 #[derive(
     PartialOrd,
@@ -43,9 +45,7 @@ impl PartialEq for Amount {
 
 impl From<f64> for Amount {
     fn from(amount: f64) -> Self {
-        if amount < 0. {
-            panic!("{:#?}", OutOfRangeError::new(amount, 0., f64::INFINITY));
-        }
+        debug_assert!(amount >= 0.);
         Self(amount)
     }
 }
@@ -94,9 +94,7 @@ impl PartialEq for Entropy {
 
 impl From<f64> for Entropy {
     fn from(entropy: f64) -> Self {
-        if entropy < 0. {
-            panic!("{:#?}", OutOfRangeError::new(entropy, 0., f64::INFINITY));
-        }
+        debug_assert!(entropy >= 0.);
         Self(entropy)
     }
 }
@@ -145,9 +143,7 @@ impl PartialEq for Probability {
 
 impl From<f64> for Probability {
     fn from(probability: f64) -> Self {
-        if !(0. ..=1.).contains(&probability) {
-            panic!("{:#?}", OutOfRangeError::new(probability, 0., 1.));
-        }
+        debug_assert!((0. ..=1.).contains(&probability));
         Self(probability)
     }
 }
@@ -166,13 +162,7 @@ impl Probability {
     }
 
     pub fn check_in_bound(&self) -> Result<(), ErrorKind> {
-        if !(0. ..=1.).contains(&self.0) {
-            return Err(ErrorKind::ProbabilityOutOfRange(OutOfRangeError::new(
-                *self,
-                Probability(0.),
-                Probability(1.),
-            )));
-        }
+        debug_assert!((0. ..=1.).contains(&self.0));
         Ok(())
     }
 }
@@ -207,9 +197,7 @@ pub struct Time(i64);
 
 impl From<i64> for Time {
     fn from(time: i64) -> Self {
-        if time < 0 {
-            panic!("{:#?}", OutOfRangeError::new(time, 0, i64::MAX));
-        }
+        debug_assert!(time >= 0);
         Self(time)
     }
 }
@@ -226,4 +214,20 @@ impl Time {
     pub fn increment_by(&mut self, amount: Amount) {
         self.0 += amount.0 as i64;
     }
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+pub enum UnitsError {
+    #[error("Probability is out of range: {probability:#?}")]
+    ProbabilityOutOfRange {
+        probability: Probability,
+        context: trc,
+    },
+
+    #[error("Probability sum is not 1 but {probability_sum:#?}")]
+    ProbabilitySumNot1 {
+        probability_sum: Probability,
+        context: trc,
+    },
 }

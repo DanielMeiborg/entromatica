@@ -7,12 +7,11 @@ use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 
 use derive_more::*;
+use thiserror::Error;
+use backtrace::Backtrace as trc;
 
 use crate::cache::*;
-use crate::error::*;
-use crate::resource::*;
-use crate::state::*;
-use crate::units::*;
+use crate::*;
 
 /// An action a rule can take on a single entity and resource when its condition is met.
 #[derive(PartialEq, Clone, Debug, Default)]
@@ -102,16 +101,13 @@ impl Hash for ProbabilityWeight {
 }
 
 impl PartialEq for ProbabilityWeight {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.to_bits() == other.0.to_bits()
+    fn eq(&self, other: &ProbabilityWeight) -> bool {
+        self.0 == other.0
     }
 }
 
 impl From<f64> for ProbabilityWeight {
     fn from(value: f64) -> Self {
-        if value < 0. {
-            panic!("ProbabilityWeight cannot be negative");
-        }
         Self(value)
     }
 }
@@ -187,18 +183,17 @@ impl Rule {
         cache: &Cache,
         rule_name: RuleName,
         state: State,
-    ) -> (RuleApplies, Option<ConditionCacheUpdate>) {
+    ) -> Result<(RuleApplies, Option<ConditionCacheUpdate>), CacheError> {
         if self.weight == ProbabilityWeight(0.) {
-            return (RuleApplies(false), None);
+            return Ok((RuleApplies(false), None));
         }
         let base_state_hash = StateHash::from_state(&state);
-        match cache.condition(&rule_name, &base_state_hash) {
-            Some(rule_applies) => (*rule_applies, None),
-            None => {
-                let rule_applies = (self.condition)(state);
-                let cache = ConditionCacheUpdate::from(rule_name, base_state_hash, rule_applies);
-                (rule_applies, Some(cache))
-            }
+        if cache.contains_condition(&rule_name, &base_state_hash)? {
+            Ok((*cache.condition(&rule_name, &base_state_hash)?, None))
+        } else {
+            let rule_applies = (self.condition)(state);
+            let cache = ConditionCacheUpdate::from(rule_name, base_state_hash, rule_applies);
+            Ok((rule_applies, Some(cache)))
         }
     }
 
@@ -211,30 +206,23 @@ impl Rule {
         base_state: State,
         resources: &HashMap<ResourceName, Resource>,
     ) -> Result<(State, Option<ActionCacheUpdate>), ErrorKind> {
-        match cache.action(&rule_name, &base_state_hash) {
-            Some(new_state_hash) => Ok((
+        if cache.contains_action(&rule_name, &base_state_hash)? {
+            Ok((
                 possible_states
-                    .state(&new_state_hash)
-                    .ok_or_else(|| {
-                        ErrorKind::StateInPossibleStatesNotFound(NotFoundError::new(
-                            new_state_hash,
-                            possible_states.clone(),
-                        ))
-                    })?
+                    .state(&cache.action(&rule_name, &base_state_hash)?)
+                    .map_err(ErrorKind::PossibleStatesError)?
                     .clone(),
                 None,
-            )),
-            None => {
-                let actions = (self.actions)(base_state.clone());
-                let new_state = base_state.apply_actions(actions)?;
+            ))
+        } else {
+            let actions = (self.actions)(base_state.clone());
+            let new_state = base_state.apply_actions(actions)?;
 
-                Resource::check_resource_capacities(resources, &new_state)?;
+            Resource::check_resource_capacities(resources, &new_state)?;
 
-                let new_state_hash = StateHash::from_state(&new_state);
-                let cache_update =
-                    ActionCacheUpdate::from(rule_name.clone(), base_state_hash, new_state_hash);
-                Ok((new_state, Some(cache_update)))
-            }
+            let new_state_hash = StateHash::from_state(&new_state);
+            let cache = ActionCacheUpdate::from(rule_name, base_state_hash, new_state_hash);
+            Ok((new_state, Some(cache)))
         }
     }
 
@@ -253,6 +241,16 @@ impl Rule {
     pub fn actions(&self) -> fn(State) -> HashMap<ActionName, Action> {
         self.actions
     }
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+pub enum RuleError {
+    #[error("Rule not found: {rule_name:#?}")]
+    RuleNotFound { rule_name: RuleName, context: trc },
+
+    #[error("Rule already exists: {rule_name:#?}")]
+    RuleAlreadyExists { rule_name: RuleName, context: trc },
 }
 
 #[derive(
@@ -300,7 +298,7 @@ mod tests {
         cache
             .add_condition(rule_name.clone(), state_hash, RuleApplies(true))
             .unwrap();
-        let (rule_applies, cache_update) = rule.applies(&cache, rule_name, state);
+        let (rule_applies, cache_update) = rule.applies(&cache, rule_name, state).unwrap();
         assert_eq!(rule_applies, RuleApplies(true));
         assert_eq!(cache_update, None);
     }
@@ -316,7 +314,7 @@ mod tests {
         );
         let rule_name = RuleName("Test".to_string());
         let state = State::new();
-        let (rule_applies, cache_update) = rule.applies(&cache, rule_name, state.clone());
+        let (rule_applies, cache_update) = rule.applies(&cache, rule_name, state.clone()).unwrap();
         assert_eq!(rule_applies, RuleApplies(true));
         assert_eq!(
             cache_update,
