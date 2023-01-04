@@ -6,9 +6,9 @@ use hashbrown::{HashMap, HashSet};
 #[allow(unused_imports)]
 use itertools::Itertools;
 
+use backtrace::Backtrace as trc;
 use derive_more::*;
 use thiserror::Error;
-use backtrace::Backtrace as trc;
 
 use crate::cache::*;
 use crate::*;
