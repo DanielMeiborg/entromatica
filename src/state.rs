@@ -8,14 +8,16 @@ use hashbrown::{HashMap, HashSet};
 #[allow(unused_imports)]
 use itertools::Itertools;
 
+use backtrace::Backtrace as trc;
 use derive_more::*;
 use rayon::prelude::*;
+use thiserror::Error;
 
 use crate::cache::*;
-use crate::error::*;
 use crate::resource::*;
 use crate::rules::*;
 use crate::units::*;
+use crate::*;
 
 /// A single entity in the simulation.
 #[derive(Clone, PartialEq, Debug, Default)]
@@ -27,7 +29,7 @@ impl Display for Entity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Entity:")?;
         for (resource_name, amount) in &self.resources {
-            writeln!(f, "  {}: {}", resource_name, amount)?;
+            writeln!(f, "  {resource_name}: {amount}")?;
         }
         Ok(())
     }
@@ -46,16 +48,25 @@ impl Entity {
         }
     }
 
-    pub fn resource(&self, resource_name: &ResourceName) -> Result<&Amount, ErrorKind> {
-        self.resources.get(resource_name).ok_or_else(|| {
-            ErrorKind::ResourceNotFound(NotFoundError::new(resource_name.clone(), self.clone()))
-        })
+    pub fn resource(&self, resource_name: &ResourceName) -> Result<&Amount, EntityError> {
+        self.resources
+            .get(resource_name)
+            .ok_or_else(|| EntityError::ResourceNotFound {
+                resource_name: resource_name.clone(),
+                context: trc::new(),
+            })
     }
 
-    pub fn resource_mut(&mut self, resource_name: &ResourceName) -> Result<&mut Amount, ErrorKind> {
-        let err =
-            ErrorKind::ResourceNotFound(NotFoundError::new(resource_name.clone(), self.clone()));
-        self.resources.get_mut(resource_name).ok_or(err)
+    pub fn resource_mut(
+        &mut self,
+        resource_name: &ResourceName,
+    ) -> Result<&mut Amount, EntityError> {
+        self.resources
+            .get_mut(resource_name)
+            .ok_or_else(|| EntityError::ResourceNotFound {
+                resource_name: resource_name.clone(),
+                context: trc::new(),
+            })
     }
 
     pub fn iter_resources(&self) -> impl Iterator<Item = (&ResourceName, &Amount)> {
@@ -65,6 +76,16 @@ impl Entity {
     pub fn iter_resources_mut(&mut self) -> impl Iterator<Item = (&ResourceName, &mut Amount)> {
         self.resources.iter_mut()
     }
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+pub enum EntityError {
+    #[error("Resource not found: {resource_name:#?}")]
+    ResourceNotFound {
+        resource_name: ResourceName,
+        context: trc,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut)]
@@ -89,12 +110,7 @@ impl Display for State {
         for (entity_name, entity) in &self.entities {
             writeln!(f, "  {entity_name}:")?;
             for (resource_name, amount) in &entity.resources {
-                writeln!(
-                    f,
-                    "    {resource_name}: {amount}",
-                    resource_name = resource_name,
-                    amount = amount
-                )?;
+                writeln!(f, "    {resource_name}: {amount}")?;
             }
         }
         Ok(())
@@ -136,15 +152,22 @@ impl State {
         }
     }
 
-    pub fn entity(&self, entity_name: &EntityName) -> Result<&Entity, ErrorKind> {
-        self.entities.get(entity_name).ok_or_else(|| {
-            ErrorKind::EntityNotFound(NotFoundError::new(entity_name.clone(), self.clone()))
-        })
+    pub fn entity(&self, entity_name: &EntityName) -> Result<&Entity, StateError> {
+        self.entities
+            .get(entity_name)
+            .ok_or_else(|| StateError::EntityNotFound {
+                entity_name: entity_name.clone(),
+                context: trc::new(),
+            })
     }
 
-    pub fn entity_mut(&mut self, entity_name: &EntityName) -> Result<&mut Entity, ErrorKind> {
-        let err = ErrorKind::EntityNotFound(NotFoundError::new(entity_name.clone(), self.clone()));
-        self.entities.get_mut(entity_name).ok_or(err)
+    pub fn entity_mut(&mut self, entity_name: &EntityName) -> Result<&mut Entity, StateError> {
+        self.entities
+            .get_mut(entity_name)
+            .ok_or_else(|| StateError::EntityNotFound {
+                entity_name: entity_name.clone(),
+                context: trc::new(),
+            })
     }
 
     pub fn iter_entities(&self) -> impl Iterator<Item = (&EntityName, &Entity)> {
@@ -158,26 +181,21 @@ impl State {
     pub(crate) fn apply_actions(
         &self,
         actions: HashMap<ActionName, Action>,
-    ) -> Result<State, ErrorKind> {
+    ) -> Result<State, StateError> {
         let mut new_state = self.clone();
         let mut affected_resources: HashSet<(EntityName, ResourceName)> = HashSet::new();
         for (_, action) in actions {
-            let err = ErrorKind::EntityNotFound(NotFoundError::new(
-                action.target().clone(),
-                new_state.clone(),
-            ));
             if affected_resources.contains(&(action.target().clone(), action.resource().clone())) {
-                return Err(ErrorKind::ResourceAlreadyAffected(AlreadyExistsError::new(
-                    action.resource().clone(),
-                    action.target().clone(),
-                )));
+                return Err(StateError::ResourceAlreadyAffected {
+                    resource_name: action.resource().clone(),
+                    entity_name: action.target().clone(),
+                    context: trc::new(),
+                });
             } else {
                 affected_resources.insert((action.target().clone(), action.resource().clone()));
             }
             new_state
-                .entities
-                .get_mut(action.target())
-                .ok_or(err)?
+                .entity_mut(action.target())?
                 .resources
                 .insert(action.resource().clone(), action.amount());
         }
@@ -212,14 +230,9 @@ impl State {
         let mut new_possible_states: PossibleStates = PossibleStates::new();
 
         for (rule_name, rule) in rules {
-            let base_state = possible_states.state(&base_state_hash).ok_or_else(|| {
-                ErrorKind::StateInPossibleStatesNotFound(NotFoundError::new(
-                    base_state_hash,
-                    possible_states.clone(),
-                ))
-            })?;
+            let base_state = possible_states.state(&base_state_hash)?;
             let (rule_applies, condition_cache_update) =
-                rule.applies(cache, rule_name.clone(), base_state.clone());
+                rule.applies(cache, rule_name.clone(), base_state.clone())?;
             if let Some(cache) = condition_cache_update {
                 condition_cache_updates.push(cache);
             }
@@ -296,6 +309,26 @@ impl State {
     }
 }
 
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+pub enum StateError {
+    #[error("Entity not found: {entity_name:#?}")]
+    EntityNotFound {
+        entity_name: EntityName,
+        context: trc,
+    },
+
+    #[error("Resource {resource_name:#?} already affected for entity {entity_name:#?}")]
+    ResourceAlreadyAffected {
+        resource_name: ResourceName,
+        entity_name: EntityName,
+        context: trc,
+    },
+
+    #[error("EntityError: {0:#?}")]
+    EntityError(#[from] EntityError),
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Display, Default)]
 pub struct StateHash(u64);
 
@@ -317,12 +350,7 @@ pub struct PossibleStates(HashMap<StateHash, State>);
 impl Display for PossibleStates {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (state_hash, state) in &self.0 {
-            writeln!(
-                f,
-                "{state_hash}: {state}",
-                state_hash = state_hash,
-                state = state
-            )?;
+            writeln!(f, "{state_hash}: {state}")?;
         }
         Ok(())
     }
@@ -337,27 +365,33 @@ impl PossibleStates {
         &mut self,
         state_hash: StateHash,
         state: State,
-    ) -> Result<(), ErrorKind> {
-        if let Some(present_state) = self.state(&state_hash) {
+    ) -> Result<(), PossibleStatesError> {
+        if let Ok(present_state) = self.state(&state_hash) {
             if state != *present_state {
-                return Err(ErrorKind::StateInPossibleStatesAlreadyExists(
-                    AlreadyExistsError::new((state_hash, state), self.clone()),
-                ));
+                return Err(PossibleStatesError::StateAlreadyExists {
+                    state_hash,
+                    context: trc::new(),
+                });
             }
         }
         self.0.insert(state_hash, state);
         Ok(())
     }
 
-    pub(crate) fn append_states(&mut self, states: &PossibleStates) -> Result<(), ErrorKind> {
+    pub(crate) fn merge(&mut self, states: &PossibleStates) -> Result<(), ErrorKind> {
         for (state_hash, state) in states.iter() {
             self.append_state(*state_hash, state.clone())?;
         }
         Ok(())
     }
 
-    pub fn state(&self, state_hash: &StateHash) -> Option<&State> {
-        self.0.get(state_hash)
+    pub fn state(&self, state_hash: &StateHash) -> Result<&State, PossibleStatesError> {
+        self.0
+            .get(state_hash)
+            .ok_or(PossibleStatesError::StateNotFound {
+                state_hash: *state_hash,
+                context: trc::new(),
+            })
     }
 
     pub fn iter(&self) -> hashbrown::hash_map::Iter<StateHash, State> {
@@ -381,18 +415,23 @@ impl PossibleStates {
     }
 }
 
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+pub enum PossibleStatesError {
+    #[error("State not found: {state_hash:#?}")]
+    StateNotFound { state_hash: StateHash, context: trc },
+
+    #[error("State already exists: {state_hash:#?}")]
+    StateAlreadyExists { state_hash: StateHash, context: trc },
+}
+
 #[derive(Clone, PartialEq, Debug, Default, From, Into, AsRef, AsMut, Index)]
 pub struct ReachableStates(HashMap<StateHash, Probability>);
 
 impl Display for ReachableStates {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (state_hash, probability) in &self.0 {
-            writeln!(
-                f,
-                "{state_hash}: {probability}",
-                state_hash = state_hash,
-                probability = probability
-            )?;
+            writeln!(f, "{state_hash}: {probability}")?;
         }
         Ok(())
     }
@@ -407,15 +446,14 @@ impl ReachableStates {
         &mut self,
         state_hash: StateHash,
         state_probability: Probability,
-    ) -> Result<(), ErrorKind> {
+    ) -> Result<(), UnitsError> {
         match self.0.get_mut(&state_hash) {
             Some(probability) => {
                 if *probability + state_probability > Probability::from(1.) {
-                    return Err(ErrorKind::ProbabilityOutOfRange(OutOfRangeError::new(
-                        *probability + state_probability,
-                        Probability::from(0.),
-                        Probability::from(1.),
-                    )));
+                    return Err(UnitsError::ProbabilityOutOfRange {
+                        probability: *probability + state_probability,
+                        context: trc::new(),
+                    });
                 }
                 *probability += state_probability;
             }
@@ -426,7 +464,7 @@ impl ReachableStates {
         Ok(())
     }
 
-    pub fn append_states(&mut self, states: &ReachableStates) -> Result<(), ErrorKind> {
+    pub fn merge(&mut self, states: &ReachableStates) -> Result<(), ErrorKind> {
         for (state_hash, state_probability) in states.iter() {
             self.append_state(*state_hash, *state_probability)?;
         }
@@ -500,53 +538,58 @@ impl ReachableStates {
                 new_possible_states,
                 condition_cache_updates,
                 action_cache_update,
-            ) = possible_states
-                .state(base_state_hash)
-                .ok_or_else(|| {
-                    ErrorKind::StateInPossibleStatesNotFound(NotFoundError::new(
-                        *base_state_hash,
-                        possible_states.clone(),
-                    ))
-                })?
-                .reachable_states(
-                    base_state_probability,
-                    rules,
-                    possible_states,
-                    cache,
-                    resources,
-                )?;
+            ) = possible_states.state(base_state_hash)?.reachable_states(
+                base_state_probability,
+                rules,
+                possible_states,
+                cache,
+                resources,
+            )?;
             for cache_update in condition_cache_updates {
                 condition_cache_updates_tx.send(cache_update).map_err(|e| {
-                    ErrorKind::InternalError(InternalError::from_error(
-                        InternalErrorKind::ConditionCacheUpdateSendError(e),
-                    ))
+                    CacheError::ConditionCacheUpdateSendError {
+                        source: e,
+                        context: trc::new(),
+                    }
                 })?;
             }
             for cache_update in action_cache_update {
                 action_cache_updates_tx.send(cache_update).map_err(|e| {
-                    InternalErrorKind::ActionCacheUpdateSendError(e).to_error_kind()
+                    CacheError::ActionCacheUpdateSendError {
+                        source: e,
+                        context: trc::new(),
+                    }
                 })?;
             }
-            possible_states.append_states(&new_possible_states)?;
-            new_reachable_states.append_states(&new_reachable_states_from_base_state)?;
+            possible_states.merge(&new_possible_states)?;
+            new_reachable_states.merge(&new_reachable_states_from_base_state)?;
         }
 
         *self = new_reachable_states;
 
         while let Result::Ok(condition_cache_update) = condition_cache_updates_rx.try_recv() {
-            cache
-                .apply_condition_update(condition_cache_update)
-                .map_err(|e| e.to_error_kind())?;
+            cache.apply_condition_update(condition_cache_update)?;
         }
 
         while let Result::Ok(action_cache_update) = action_cache_updates_rx.try_recv() {
-            cache
-                .apply_action_update(action_cache_update)
-                .map_err(|e| e.to_error_kind())?;
+            cache.apply_action_update(action_cache_update)?;
         }
-        assert_eq!(self.probability_sum(), Probability::from(1.));
+        let probability_sum = self.probability_sum();
+        if probability_sum != Probability::from(1.) {
+            return Err(ErrorKind::UnitsError(UnitsError::ProbabilitySumNot1 {
+                probability_sum,
+                context: trc::new(),
+            }));
+        }
         Ok(())
     }
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+pub enum ReachableStatesError {
+    #[error("State not found: {state_hash:#?}")]
+    StateNotFound { state_hash: StateHash, context: trc },
 }
 
 #[cfg(test)]
@@ -560,8 +603,9 @@ mod tests {
         assert_eq!(
             entity
                 .resource(&ResourceName::from("resource".to_string()))
-                .cloned(),
-            Result::Ok(Amount::from(1.))
+                .cloned()
+                .unwrap(),
+            Amount::from(1.)
         );
     }
 
@@ -569,13 +613,16 @@ mod tests {
     fn entity_get_resource_should_return_error_on_missing_resource() {
         let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
         let entity = Entity::from_resources(resources);
-        assert_eq!(
-            entity.resource(&ResourceName::from("missing_resource".to_string())),
-            Result::Err(ErrorKind::ResourceNotFound(NotFoundError::new(
-                ResourceName::from("missing_resource".to_string()),
-                entity.clone()
-            )))
-        );
+        if let Err(EntityError::ResourceNotFound { resource_name, .. }) =
+            entity.resource(&ResourceName::from("missing_resource".to_string()))
+        {
+            assert_eq!(
+                resource_name,
+                ResourceName::from("missing_resource".to_string())
+            );
+        } else {
+            panic!("Unexpected error type");
+        }
     }
 
     #[test]
@@ -625,11 +672,14 @@ mod tests {
         )]);
 
         assert_eq!(
-            state.entity(&EntityName::from("A".to_string()),).cloned(),
-            Ok(Entity::from_resources(vec![(
+            state
+                .entity(&EntityName::from("A".to_string()),)
+                .cloned()
+                .unwrap(),
+            Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
-            )]))
+            )])
         );
     }
 
@@ -642,15 +692,15 @@ mod tests {
                 Amount::from(0.),
             )]),
         )]);
-        assert_eq!(
-            state
-                .entity(&EntityName::from("missing_entity".to_string()))
-                .cloned(),
-            Err(ErrorKind::EntityNotFound(NotFoundError::new(
-                EntityName::from("missing_entity".to_string()),
-                state
-            )))
-        );
+
+        if let Err(StateError::EntityNotFound { entity_name, .. }) = state
+            .entity(&EntityName::from("missing_entity".to_string()))
+            .cloned()
+        {
+            assert_eq!(entity_name, EntityName::from("missing_entity".to_string()));
+        } else {
+            panic!("Unexpected error type");
+        }
     }
 
     #[test]
@@ -664,11 +714,13 @@ mod tests {
         )]);
 
         assert_eq!(
-            state.entity_mut(&EntityName::from("A".to_string()),),
-            Ok(&mut Entity::from_resources(vec![(
+            state
+                .entity_mut(&EntityName::from("A".to_string()),)
+                .unwrap(),
+            &mut Entity::from_resources(vec![(
                 ResourceName::from("Resource".to_string()),
                 Amount::from(0.)
-            )]))
+            )])
         );
     }
 
@@ -681,15 +733,15 @@ mod tests {
                 Amount::from(0.),
             )]),
         )]);
-        assert_eq!(
-            state
-                .entity_mut(&EntityName::from("missing_entity".to_string()))
-                .cloned(),
-            Err(ErrorKind::EntityNotFound(NotFoundError::new(
-                EntityName::from("missing_entity".to_string()),
-                state
-            )))
-        );
+
+        if let Err(StateError::EntityNotFound { entity_name, .. }) = state
+            .entity_mut(&EntityName::from("missing_entity".to_string()))
+            .cloned()
+        {
+            assert_eq!(entity_name, EntityName::from("missing_entity".to_string()));
+        } else {
+            panic!("Unexpected error type");
+        }
     }
 
     #[test]
@@ -768,13 +820,18 @@ mod tests {
                 ),
             ),
         ]);
-        assert_eq!(
-            state.apply_actions(actions),
-            Err(ErrorKind::ResourceAlreadyAffected(AlreadyExistsError::new(
-                ResourceName::from("Resource".to_string()),
-                EntityName::from("A".to_string()),
-            )))
-        );
+
+        if let Err(StateError::ResourceAlreadyAffected {
+            resource_name,
+            entity_name,
+            ..
+        }) = state.apply_actions(actions)
+        {
+            assert_eq!(resource_name, ResourceName::from("Resource".to_string()));
+            assert_eq!(entity_name, EntityName::from("A".to_string()));
+        } else {
+            panic!("Unexpected error type");
+        }
     }
 
     #[test]

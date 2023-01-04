@@ -7,9 +7,11 @@ use hashbrown::{HashMap, HashSet};
 #[allow(unused_imports)]
 use itertools::Itertools;
 
-use crate::error::*;
-use crate::state::*;
+use backtrace::Backtrace as trc;
+use thiserror::Error;
+
 use crate::units::*;
+use crate::*;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, AsRef, AsMut, Into)]
 pub struct ResourceName(String);
@@ -101,8 +103,12 @@ impl Resource {
                         let entity_amount = entity.resource(resource_name)?;
                         total_amount += *entity_amount;
                         if total_amount > *limit || total_amount < Amount::from(0.) {
-                            return Err(ErrorKind::TotalAmountExceedsResourceLimit(
-                                OutOfRangeError::new(total_amount, Amount::from(0.), *limit),
+                            return Err(ErrorKind::ResourceError(
+                                ResourceError::TotalAmountExceedsResourceLimit {
+                                    amount: total_amount,
+                                    limit: *limit,
+                                    context: trc::new(),
+                                },
                             ));
                         }
                     }
@@ -111,11 +117,12 @@ impl Resource {
                     for (_, entity) in state.iter_entities() {
                         let entity_amount = entity.resource(resource_name)?;
                         if *entity_amount < Amount::from(0.) {
-                            return Err(ErrorKind::AmountIsNegative(OutOfRangeError::new(
-                                *entity_amount,
-                                Amount::from(0.),
-                                Amount::from(f64::INFINITY),
-                            )));
+                            return Err(ErrorKind::ResourceError(
+                                ResourceError::AmountIsNegative {
+                                    amount: *entity_amount,
+                                    context: trc::new(),
+                                },
+                            ));
                         }
                     }
                 }
@@ -126,11 +133,13 @@ impl Resource {
                     for (_, entity) in state.iter_entities() {
                         let entity_amount = entity.resource(resource_name)?;
                         if entity_amount > limit {
-                            return Err(ErrorKind::AmountExceedsEntityLimit(OutOfRangeError::new(
-                                *entity_amount,
-                                Amount::from(0.),
-                                *limit,
-                            )));
+                            return Err(ErrorKind::ResourceError(
+                                ResourceError::AmountExceedsEntityLimit {
+                                    amount: *entity_amount,
+                                    limit: *limit,
+                                    context: trc::new(),
+                                },
+                            ));
                         }
                     }
                 }
@@ -139,6 +148,33 @@ impl Resource {
         }
         Ok(())
     }
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+pub enum ResourceError {
+    #[error("Resource not found: {resource_name:#?}")]
+    ResourceNotFound {
+        resource_name: ResourceName,
+        context: trc,
+    },
+
+    #[error("Amount exceeds entity limit {amount:#?}: {amount:#?}")]
+    AmountExceedsEntityLimit {
+        amount: Amount,
+        limit: Amount,
+        context: trc,
+    },
+
+    #[error("Total amount exceeds resource limit {limit:#?}: {amount:#?}")]
+    TotalAmountExceedsResourceLimit {
+        amount: Amount,
+        limit: Amount,
+        context: trc,
+    },
+
+    #[error("Amount is negative: {amount:#?}")]
+    AmountIsNegative { amount: Amount, context: trc },
 }
 
 #[cfg(test)]
