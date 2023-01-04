@@ -574,12 +574,14 @@ impl ReachableStates {
         while let Result::Ok(action_cache_update) = action_cache_updates_rx.try_recv() {
             cache.apply_action_update(action_cache_update)?;
         }
-        let probability_sum = self.probability_sum();
-        if probability_sum != Probability::from(1.) {
-            return Err(ErrorKind::UnitsError(UnitsError::ProbabilitySumNot1 {
-                probability_sum,
-                context: trc::new(),
-            }));
+        if cfg!(debug_assertions) {
+            let probability_sum = self.probability_sum();
+            if probability_sum != Probability::from(1.) {
+                return Err(ErrorKind::UnitsError(UnitsError::ProbabilitySumNot1 {
+                    probability_sum,
+                    context: trc::new(),
+                }));
+            }
         }
         Ok(())
     }
