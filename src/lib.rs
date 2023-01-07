@@ -1,4 +1,7 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    sync::{MutexGuard, PoisonError},
+};
 
 #[allow(unused_imports)]
 use hashbrown::{HashMap, HashSet};
@@ -28,7 +31,15 @@ use cache::*;
 
 #[derive(Debug, Clone, Error)]
 #[error(transparent)]
-pub struct InternalError(#[from] CacheError);
+pub struct InternalError(#[from] InternalErrorKind);
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Error)]
+#[error(transparent)]
+pub(crate) enum InternalErrorKind {
+    CacheError(#[from] CacheError),
+    ThreadingError(#[from] ThreadingError),
+}
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Error)]
@@ -60,8 +71,63 @@ pub enum ErrorKind {
 
 impl From<CacheError> for ErrorKind {
     fn from(cache_error: CacheError) -> Self {
-        Self::InternalError(InternalError(cache_error))
+        Self::InternalError(InternalError(InternalErrorKind::CacheError(cache_error)))
     }
+}
+
+impl From<PoisonError<MutexGuard<'_, PossibleStates>>> for ErrorKind {
+    fn from(poison_error: PoisonError<MutexGuard<'_, PossibleStates>>) -> Self {
+        Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
+            ThreadingError::PossibleStatesSyncError {
+                msg: format!("{:?}", poison_error),
+                context: get_backtrace(),
+            },
+        )))
+    }
+}
+
+impl From<PoisonError<MutexGuard<'_, ReachableStates>>> for ErrorKind {
+    fn from(poison_error: PoisonError<MutexGuard<'_, ReachableStates>>) -> Self {
+        Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
+            ThreadingError::ReachableStatesSyncError {
+                msg: format!("{:?}", poison_error),
+                context: get_backtrace(),
+            },
+        )))
+    }
+}
+
+impl From<PoisonError<MutexGuard<'_, Cache>>> for ErrorKind {
+    fn from(poison_error: PoisonError<MutexGuard<'_, Cache>>) -> Self {
+        Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
+            ThreadingError::CacheSyncError {
+                msg: format!("{:?}", poison_error),
+                context: get_backtrace(),
+            },
+        )))
+    }
+}
+
+#[derive(Debug, Clone, Error)]
+pub enum ThreadingError {
+    #[error("Error while syncing possible states: {msg:?}")]
+    PossibleStatesSyncError { msg: String, context: trc },
+
+    #[error("Error while syncing reachable states: {msg:?}")]
+    ReachableStatesSyncError { msg: String, context: trc },
+
+    #[error("Error while syncing cache: {msg:?}")]
+    CacheSyncError { msg: String, context: trc },
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn get_backtrace() -> trc {
+    trc::new()
+}
+
+#[cfg(not(debug_assertions))]
+pub(crate) fn get_backtrace() -> trc {
+    trc::new_unresolved()
 }
 
 /// All information and methods needed to run the simulation.
@@ -161,7 +227,7 @@ impl Simulation {
                 if !resources.contains_key(resource_name) {
                     return Err(EntityError::ResourceNotFound {
                         resource_name: resource_name.clone(),
-                        context: trc::new(),
+                        context: get_backtrace(),
                     });
                 }
             }
@@ -234,7 +300,7 @@ impl Simulation {
             if self.rules.contains_key(rule_name) {
                 return Err(ErrorKind::from(CacheError::RuleAlreadyExists {
                     rule_name: rule_name.clone(),
-                    context: trc::new(),
+                    context: get_backtrace(),
                 }));
             }
         }

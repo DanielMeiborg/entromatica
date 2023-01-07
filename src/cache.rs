@@ -1,6 +1,5 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::sync::mpsc::SendError;
 
 #[allow(unused_imports)]
 use hashbrown::{HashMap, HashSet};
@@ -12,8 +11,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use thiserror::Error;
 
-use crate::rules::*;
-use crate::state::*;
+use crate::*;
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub(self) struct RuleCache {
@@ -52,18 +50,18 @@ impl RuleCache {
     pub fn condition(&self, base_state_hash: &StateHash) -> Result<&RuleApplies, RuleCacheError> {
         self.condition
             .get(base_state_hash)
-            .ok_or(RuleCacheError::ConditionNotFound {
+            .ok_or_else(|| RuleCacheError::ConditionNotFound {
                 base_state_hash: *base_state_hash,
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
     pub fn action(&self, base_state_hash: &StateHash) -> Result<&StateHash, RuleCacheError> {
         self.actions
             .get(base_state_hash)
-            .ok_or(RuleCacheError::ActionNotFound {
+            .ok_or_else(|| RuleCacheError::ActionNotFound {
                 base_state_hash: *base_state_hash,
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
@@ -73,11 +71,15 @@ impl RuleCache {
         applies: RuleApplies,
     ) -> Result<(), RuleCacheError> {
         if self.condition.contains_key(&base_state_hash) {
-            return Err(RuleCacheError::ConditionAlreadyExists {
-                base_state_hash,
-                applies,
-                context: trc::new(),
-            });
+            if self.condition.get(&base_state_hash) == Some(&applies) {
+                return Ok(());
+            } else {
+                return Err(RuleCacheError::ConditionAlreadyExists {
+                    base_state_hash,
+                    applies,
+                    context: get_backtrace(),
+                });
+            }
         }
         self.condition.insert(base_state_hash, applies);
         Ok(())
@@ -89,11 +91,15 @@ impl RuleCache {
         new_state_hash: StateHash,
     ) -> Result<(), RuleCacheError> {
         if self.actions.contains_key(&base_state_hash) {
-            return Err(RuleCacheError::ActionAlreadyExists {
-                base_state_hash,
-                new_state_hash,
-                context: trc::new(),
-            });
+            if self.actions.get(&base_state_hash) == Some(&new_state_hash) {
+                return Ok(());
+            } else {
+                return Err(RuleCacheError::ActionAlreadyExists {
+                    base_state_hash,
+                    new_state_hash,
+                    context: get_backtrace(),
+                });
+            }
         }
         self.actions.insert(base_state_hash, new_state_hash);
         Ok(())
@@ -162,7 +168,7 @@ impl Cache {
             .get(rule_name)
             .ok_or_else(|| CacheError::RuleNotFound {
                 rule_name: rule_name.clone(),
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
@@ -171,7 +177,7 @@ impl Cache {
             .get_mut(rule_name)
             .ok_or_else(|| CacheError::RuleNotFound {
                 rule_name: rule_name.clone(),
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
@@ -179,7 +185,7 @@ impl Cache {
         if self.rules.contains_key(&rule_name) {
             return Err(CacheError::RuleAlreadyExists {
                 rule_name,
-                context: trc::new(),
+                context: get_backtrace(),
             });
         }
         self.rules.insert(rule_name, RuleCache::new());
@@ -301,6 +307,18 @@ impl Cache {
         }
         graph
     }
+
+    pub fn merge(&mut self, cache: &Self) -> Result<(), CacheError> {
+        for (rule_name, rule_cache) in cache.rules.iter() {
+            for (base_state_hash, applies) in rule_cache.condition.iter() {
+                self.add_condition(rule_name.clone(), *base_state_hash, *applies)?;
+            }
+            for (base_state_hash, new_state_hash) in rule_cache.actions.iter() {
+                self.add_action(rule_name.clone(), *base_state_hash, *new_state_hash)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[non_exhaustive]
@@ -311,20 +329,6 @@ pub(crate) enum CacheError {
 
     #[error("Rule not found: {rule_name:#?}")]
     RuleNotFound { rule_name: RuleName, context: trc },
-
-    #[error("Condition cache update send error: {source:#?}")]
-    ConditionCacheUpdateSendError {
-        #[source]
-        source: SendError<ConditionCacheUpdate>,
-        context: trc,
-    },
-
-    #[error("Action cache update send error: {source:#?}")]
-    ActionCacheUpdateSendError {
-        #[source]
-        source: SendError<ActionCacheUpdate>,
-        context: trc,
-    },
 
     #[error("Internal cache error: {source:#?}")]
     InternalError {
@@ -338,7 +342,7 @@ impl From<RuleCacheError> for CacheError {
     fn from(source: RuleCacheError) -> Self {
         Self::InternalError {
             source: InternalCacheError(source),
-            context: trc::new(),
+            context: get_backtrace(),
         }
     }
 }
@@ -422,8 +426,6 @@ impl ActionCacheUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resource::*;
-    use crate::units::*;
 
     #[test]
     fn cache_add_should_work() {

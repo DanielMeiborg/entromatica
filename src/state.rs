@@ -1,7 +1,8 @@
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::sync::mpsc;
+use std::sync::mpsc::SendError;
+use std::sync::Mutex;
 
 #[allow(unused_imports)]
 use hashbrown::{HashMap, HashSet};
@@ -53,7 +54,7 @@ impl Entity {
             .get(resource_name)
             .ok_or_else(|| EntityError::ResourceNotFound {
                 resource_name: resource_name.clone(),
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
@@ -65,7 +66,7 @@ impl Entity {
             .get_mut(resource_name)
             .ok_or_else(|| EntityError::ResourceNotFound {
                 resource_name: resource_name.clone(),
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
@@ -157,7 +158,7 @@ impl State {
             .get(entity_name)
             .ok_or_else(|| StateError::EntityNotFound {
                 entity_name: entity_name.clone(),
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
@@ -166,7 +167,7 @@ impl State {
             .get_mut(entity_name)
             .ok_or_else(|| StateError::EntityNotFound {
                 entity_name: entity_name.clone(),
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
@@ -189,7 +190,7 @@ impl State {
                 return Err(StateError::ResourceAlreadyAffected {
                     resource_name: action.resource().clone(),
                     entity_name: action.target().clone(),
-                    context: trc::new(),
+                    context: get_backtrace(),
                 });
             } else {
                 affected_resources.insert((action.target().clone(), action.resource().clone()));
@@ -366,16 +367,22 @@ impl PossibleStates {
         state_hash: StateHash,
         state: State,
     ) -> Result<(), PossibleStatesError> {
-        if let Ok(present_state) = self.state(&state_hash) {
-            if state != *present_state {
-                return Err(PossibleStatesError::StateAlreadyExists {
-                    state_hash,
-                    context: trc::new(),
-                });
+        match self.0.get(&state_hash) {
+            Some(present_state) => {
+                if state != *present_state {
+                    Err(PossibleStatesError::StateAlreadyExists {
+                        state_hash,
+                        context: get_backtrace(),
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            None => {
+                self.0.insert(state_hash, state);
+                Ok(())
             }
         }
-        self.0.insert(state_hash, state);
-        Ok(())
     }
 
     pub(crate) fn merge(&mut self, states: &PossibleStates) -> Result<(), ErrorKind> {
@@ -388,9 +395,9 @@ impl PossibleStates {
     pub fn state(&self, state_hash: &StateHash) -> Result<&State, PossibleStatesError> {
         self.0
             .get(state_hash)
-            .ok_or(PossibleStatesError::StateNotFound {
+            .ok_or_else(|| PossibleStatesError::StateNotFound {
                 state_hash: *state_hash,
-                context: trc::new(),
+                context: get_backtrace(),
             })
     }
 
@@ -423,6 +430,13 @@ pub enum PossibleStatesError {
 
     #[error("State already exists: {state_hash:#?}")]
     StateAlreadyExists { state_hash: StateHash, context: trc },
+
+    #[error("Possible states send error: {source:#?}")]
+    PossibleStatesSendError {
+        #[source]
+        source: SendError<PossibleStates>,
+        context: trc,
+    },
 }
 
 #[derive(Clone, PartialEq, Debug, Default, From, Into, AsRef, AsMut, Index)]
@@ -452,7 +466,7 @@ impl ReachableStates {
                 if *probability + state_probability > Probability::from(1.) {
                     return Err(UnitsError::ProbabilityOutOfRange {
                         probability: *probability + state_probability,
-                        context: trc::new(),
+                        context: get_backtrace(),
                     });
                 }
                 *probability += state_probability;
@@ -481,6 +495,12 @@ impl ReachableStates {
 
     pub fn iter_mut(&mut self) -> hashbrown::hash_map::IterMut<StateHash, Probability> {
         self.0.iter_mut()
+    }
+
+    pub fn par_iter(
+        &self,
+    ) -> hashbrown::hash_map::rayon::ParIter<'_, state::StateHash, units::Probability> {
+        self.0.par_iter()
     }
 
     pub fn len(&self) -> usize {
@@ -528,61 +548,63 @@ impl ReachableStates {
         resources: &HashMap<ResourceName, Resource>,
         rules: &HashMap<RuleName, Rule>,
     ) -> Result<(), ErrorKind> {
-        let (condition_cache_updates_tx, condition_cache_updates_rx) = mpsc::channel();
-        let (action_cache_updates_tx, action_cache_updates_rx) = mpsc::channel();
+        let new_reachable_states_mutex = Mutex::new(ReachableStates::new());
+        let possible_states_update_mutex = Mutex::new(PossibleStates::new());
+        let cache_update_mutex = Mutex::new(cache.clone());
 
-        let mut new_reachable_states = Self::new();
-        for (base_state_hash, base_state_probability) in self.iter() {
-            let (
-                new_reachable_states_from_base_state,
-                new_possible_states,
-                condition_cache_updates,
-                action_cache_update,
-            ) = possible_states.state(base_state_hash)?.reachable_states(
-                base_state_probability,
-                rules,
-                possible_states,
-                cache,
-                resources,
-            )?;
-            for cache_update in condition_cache_updates {
-                condition_cache_updates_tx.send(cache_update).map_err(|e| {
-                    CacheError::ConditionCacheUpdateSendError {
-                        source: e,
-                        context: trc::new(),
+        self.par_iter()
+            .map(|(base_state_hash, base_state_probability)| {
+                possible_states.state(base_state_hash)?.reachable_states(
+                    base_state_probability,
+                    rules,
+                    possible_states,
+                    cache,
+                    resources,
+                )
+            })
+            .try_for_each(|result| {
+                if let Ok((
+                    new_reachable_states,
+                    new_possible_states,
+                    condition_cache_updates,
+                    action_cache_updates,
+                )) = result
+                {
+                    new_reachable_states_mutex
+                        .lock()?
+                        .merge(&new_reachable_states)?;
+                    possible_states_update_mutex
+                        .lock()?
+                        .merge(&new_possible_states)?;
+                    for condition_cache_update in condition_cache_updates {
+                        cache_update_mutex
+                            .lock()?
+                            .apply_condition_update(condition_cache_update)?;
                     }
-                })?;
-            }
-            for cache_update in action_cache_update {
-                action_cache_updates_tx.send(cache_update).map_err(|e| {
-                    CacheError::ActionCacheUpdateSendError {
-                        source: e,
-                        context: trc::new(),
+                    for action_cache_update in action_cache_updates {
+                        cache_update_mutex
+                            .lock()?
+                            .apply_action_update(action_cache_update)?;
                     }
-                })?;
-            }
-            possible_states.merge(&new_possible_states)?;
-            new_reachable_states.merge(&new_reachable_states_from_base_state)?;
-        }
+                    Ok(())
+                } else {
+                    Err(result.err().unwrap())
+                }
+            })?;
 
-        *self = new_reachable_states;
-
-        while let Result::Ok(condition_cache_update) = condition_cache_updates_rx.try_recv() {
-            cache.apply_condition_update(condition_cache_update)?;
-        }
-
-        while let Result::Ok(action_cache_update) = action_cache_updates_rx.try_recv() {
-            cache.apply_action_update(action_cache_update)?;
-        }
         if cfg!(debug_assertions) {
             let probability_sum = self.probability_sum();
             if probability_sum != Probability::from(1.) {
                 return Err(ErrorKind::UnitsError(UnitsError::ProbabilitySumNot1 {
                     probability_sum,
-                    context: trc::new(),
+                    context: get_backtrace(),
                 }));
             }
         }
+
+        *self = new_reachable_states_mutex.lock()?.clone();
+        possible_states.merge(&possible_states_update_mutex.lock()?.clone())?;
+        cache.merge(&cache_update_mutex.lock()?.clone())?;
         Ok(())
     }
 }
@@ -592,6 +614,13 @@ impl ReachableStates {
 pub enum ReachableStatesError {
     #[error("State not found: {state_hash:#?}")]
     StateNotFound { state_hash: StateHash, context: trc },
+
+    #[error("Reachable states send error: {source:#?}")]
+    ReachableStatesSendError {
+        #[source]
+        source: SendError<ReachableStates>,
+        context: trc,
+    },
 }
 
 #[cfg(test)]
