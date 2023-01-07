@@ -107,7 +107,7 @@ impl Resource {
                                 ResourceError::TotalAmountExceedsResourceLimit {
                                     amount: total_amount,
                                     limit: *limit,
-                                    context: trc::new(),
+                                    context: get_backtrace(),
                                 },
                             ));
                         }
@@ -120,7 +120,7 @@ impl Resource {
                             return Err(ErrorKind::ResourceError(
                                 ResourceError::AmountIsNegative {
                                     amount: *entity_amount,
-                                    context: trc::new(),
+                                    context: get_backtrace(),
                                 },
                             ));
                         }
@@ -137,7 +137,7 @@ impl Resource {
                                 ResourceError::AmountExceedsEntityLimit {
                                     amount: *entity_amount,
                                     limit: *limit,
-                                    context: trc::new(),
+                                    context: get_backtrace(),
                                 },
                             ));
                         }
