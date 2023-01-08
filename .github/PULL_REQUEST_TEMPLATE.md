@@ -13,7 +13,9 @@ Please make sure to read the Pull Request Guidelines: https://github.com/tauri-a
 - [ ] Docs
 - [ ] Code style update
 - [ ] Refactor
-- [ ] Build-related changes
+- [ ] Performance
+- [ ] Test
+- [ ] CI
 - [ ] Other, please describe:
 
 ### Does this PR introduce a breaking change?
@@ -24,6 +26,8 @@ Please make sure to read the Pull Request Guidelines: https://github.com/tauri-a
 
 ### Checklist
 - [ ] When resolving issues, they are referenced in the PR's title (e.g `fix: remove a typo, closes #___, #___`)
-- [ ] I have added a convincing reason for adding this feature, if necessary
+- [ ] I have added a convincing reason for adding this feature
+- [ ] I have added necessary documentation
+- [ ] I have added tests that prove my fix is effective or that my feature works (if appropriate)
 
 ### Other information
