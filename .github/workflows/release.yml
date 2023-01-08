@@ -1,5 +1,8 @@
 name: Release
 
+permissions:
+  contents: write
+
 on:
   workflow_call:
     inputs:
@@ -48,5 +51,6 @@ jobs:
         with:
           branch: main
           ref: refs/tags/${{ inputs.publish-tag }}
+          changelog: CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
