@@ -1,7 +1,5 @@
 <!--
 Update "[ ]" to "[x]" to check a box
-
-Please make sure to read the Pull Request Guidelines: https://github.com/tauri-apps/tauri/blob/dev/.github/CONTRIBUTING.md#pull-request-guidelines
 -->
 <!-- Derived from https://github.com/tauri-apps/tauri/blob/dev/.github/PULL_REQUEST_TEMPLATE.md -->
 
@@ -17,6 +15,12 @@ Please make sure to read the Pull Request Guidelines: https://github.com/tauri-a
 - [ ] Test
 - [ ] CI
 - [ ] Other, please describe:
+
+### Description
+<!-- Describe your changes in detail -->
+
+### Reason for change
+<!-- If this is a bug fix, provide the issue number. If this is a feature, explain why the change is necessary. If this is a documentation change, explain why it should be added. -->
 
 ### Does this PR introduce a breaking change?
 <!-- If yes, please describe the impact and migration path for existing applications in an attached issue. -->
