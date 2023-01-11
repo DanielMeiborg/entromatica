@@ -14,11 +14,7 @@ use derive_more::*;
 use rayon::prelude::*;
 use thiserror::Error;
 
-use crate::cache::*;
-use crate::resource::*;
-use crate::rules::*;
-use crate::units::*;
-use crate::*;
+use crate::prelude::*;
 
 /// A single entity in the simulation.
 #[derive(Clone, PartialEq, Debug, Default)]
@@ -497,9 +493,7 @@ impl ReachableStates {
         self.0.iter_mut()
     }
 
-    pub fn par_iter(
-        &self,
-    ) -> hashbrown::hash_map::rayon::ParIter<'_, state::StateHash, units::Probability> {
+    pub fn par_iter(&self) -> hashbrown::hash_map::rayon::ParIter<'_, StateHash, Probability> {
         self.0.par_iter()
     }
 
