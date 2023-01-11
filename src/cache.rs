@@ -11,7 +11,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use thiserror::Error;
 
-use crate::*;
+use crate::prelude::*;
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub(self) struct RuleCache {

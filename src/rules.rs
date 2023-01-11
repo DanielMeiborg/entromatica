@@ -10,8 +10,7 @@ use backtrace::Backtrace as trc;
 use derive_more::*;
 use thiserror::Error;
 
-use crate::cache::*;
-use crate::*;
+use crate::prelude::*;
 
 /// An action a rule can take on a single entity and resource when its condition is met.
 #[derive(PartialEq, Clone, Debug, Default)]
