@@ -287,6 +287,7 @@ impl Cache {
         )
     }
 
+    // TODO: Make secure
     ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
     pub fn graph(&self, possible_states: PossibleStates) -> Graph<State, RuleName> {
         let mut graph = Graph::<State, RuleName>::new();
@@ -424,131 +425,285 @@ impl ActionCacheUpdate {
 }
 
 #[cfg(test)]
-mod tests {
+mod cache_tests {
     use super::*;
 
-    #[test]
-    fn cache_add_should_work() {
+    fn example_cache() -> Cache {
         let mut cache = Cache::new();
         let rule_name = RuleName::from("test".to_string());
         let base_state_hash = StateHash::new();
         let new_state_hash = StateHash::new();
         let applies = RuleApplies::from(true);
-        cache
-            .add_condition(rule_name.clone(), base_state_hash, applies)
-            .unwrap();
-        cache
-            .add_action(rule_name.clone(), base_state_hash, new_state_hash)
-            .unwrap();
-        assert_eq!(
-            cache
-                .condition(&rule_name, &base_state_hash)
-                .cloned()
-                .unwrap(),
-            applies
-        );
-        assert_eq!(
-            cache.action(&rule_name, &base_state_hash).unwrap(),
-            new_state_hash
-        );
-    }
-
-    #[test]
-    fn cache_no_overwriting_values() {
-        let mut cache = Cache::new();
-        let rule_name = RuleName::from("test".to_string());
-        let base_state_hash = StateHash::new();
-        let new_state_hash = StateHash::new();
-        let applies = RuleApplies::from(true);
-        cache
-            .add_condition(rule_name.clone(), base_state_hash, applies)
-            .unwrap();
-        cache
-            .add_action(rule_name.clone(), base_state_hash, new_state_hash)
-            .unwrap();
-        let new_new_state_hash = StateHash::from_state(&State::from_entities(vec![(
-            EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
-                Amount::from(0.),
-            )]),
-        )]));
-        let new_applies = RuleApplies::from(false);
-        cache
-            .add_condition(rule_name.clone(), base_state_hash, new_applies)
-            .unwrap_err();
-        cache
-            .add_action(rule_name.clone(), base_state_hash, new_new_state_hash)
-            .unwrap_err();
-        assert_eq!(
-            cache
-                .condition(&rule_name, &base_state_hash)
-                .cloned()
-                .unwrap(),
-            applies
-        );
-        assert_eq!(
-            cache.action(&rule_name, &base_state_hash).unwrap(),
-            new_state_hash
-        );
-    }
-
-    #[test]
-    fn cache_apply_updates() {
-        let mut cache = Cache::new();
-        let rule_name = RuleName::from("test".to_string());
-        let base_state_hash = StateHash::new();
-        let new_state_hash = StateHash::new();
-        let applies = RuleApplies::from(true);
-        let condition_update =
-            ConditionCacheUpdate::from(rule_name.clone(), base_state_hash, applies);
-        let action_update =
-            ActionCacheUpdate::from(rule_name.clone(), base_state_hash, new_state_hash);
-        cache.apply_condition_update(condition_update).unwrap();
-        cache.apply_action_update(action_update).unwrap();
-        assert_eq!(
-            cache
-                .condition(&rule_name, &base_state_hash)
-                .cloned()
-                .unwrap(),
-            applies
-        );
-        assert_eq!(
-            cache.action(&rule_name, &base_state_hash).unwrap(),
-            new_state_hash
-        );
-    }
-
-    #[test]
-    fn cache_get_graph() {
-        let mut cache = Cache::new();
-        let rule_name = RuleName::from("test".to_string());
-        let base_state = State::new();
-        let base_state_hash = StateHash::from_state(&base_state);
-        let new_state = State::from_entities(vec![(
-            EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
-                Amount::from(0.),
-            )]),
-        )]);
-        let new_state_hash = StateHash::from_state(&new_state);
-        let applies = RuleApplies::from(true);
-        let possible_states = PossibleStates::from(HashMap::from([
-            (base_state_hash, base_state.clone()),
-            (new_state_hash, new_state.clone()),
-        ]));
         cache
             .add_condition(rule_name.clone(), base_state_hash, applies)
             .unwrap();
         cache
             .add_action(rule_name, base_state_hash, new_state_hash)
             .unwrap();
+        cache
+    }
 
+    #[test]
+    fn new() {
+        let cache = Cache::new();
+        assert_eq!(cache.rules.len(), 0);
+    }
+
+    #[test]
+    fn contains_condition() {
+        let cache = example_cache();
+        assert!(cache
+            .contains_condition(&RuleName::from("test".to_string()), &StateHash::new())
+            .unwrap());
+    }
+
+    #[test]
+    fn contains_action() {
+        let cache = example_cache();
+        assert!(cache
+            .contains_action(&RuleName::from("test".to_string()), &StateHash::new())
+            .unwrap());
+    }
+
+    #[test]
+    fn action() {
+        let cache = example_cache();
+        assert_eq!(
+            cache
+                .action(&RuleName::from("test".to_string()), &StateHash::new())
+                .unwrap(),
+            StateHash::new()
+        );
+        assert!(matches!(
+            cache
+                .action(
+                    &RuleName::from("nonexistium".to_string()),
+                    &StateHash::new()
+                )
+                .unwrap_err(),
+            CacheError::RuleNotFound { .. }
+        ));
+    }
+
+    #[test]
+    fn add_action() {
+        let mut cache = example_cache();
+        let base_state_hash = StateHash::from_state(&State::from_entities(vec![(
+            EntityName::from("test".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("test".to_string()),
+                Amount::from(1.),
+            )]),
+        )]));
+        cache
+            .add_action(
+                RuleName::from("test".to_string()),
+                base_state_hash,
+                StateHash::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            cache
+                .action(&RuleName::from("test".to_string()), &base_state_hash)
+                .unwrap(),
+            StateHash::new()
+        );
+        assert!(matches!(
+            cache
+                .add_action(
+                    RuleName::from("test".to_string()),
+                    base_state_hash,
+                    base_state_hash
+                )
+                .unwrap_err(),
+            CacheError::InternalError { .. }
+        ));
+        assert_eq!(
+            cache
+                .action(&RuleName::from("test".to_string()), &base_state_hash)
+                .unwrap(),
+            StateHash::new()
+        );
+    }
+
+    #[test]
+    fn add_condition() {
+        let mut cache = example_cache();
+        let base_state_hash = StateHash::from_state(&State::from_entities(vec![(
+            EntityName::from("test".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("test".to_string()),
+                Amount::from(1.),
+            )]),
+        )]));
+        cache
+            .add_condition(
+                RuleName::from("test".to_string()),
+                base_state_hash,
+                RuleApplies::from(true),
+            )
+            .unwrap();
+        assert!(cache
+            .contains_condition(&RuleName::from("test".to_string()), &base_state_hash)
+            .unwrap());
+        cache
+            .add_condition(
+                RuleName::from("another".to_string()),
+                base_state_hash,
+                RuleApplies::from(true),
+            )
+            .unwrap();
+        assert!(cache
+            .contains_condition(&RuleName::from("another".to_string()), &base_state_hash)
+            .unwrap());
+        assert!(matches!(
+            cache
+                .add_condition(
+                    RuleName::from("test".to_string()),
+                    base_state_hash,
+                    RuleApplies::from(false)
+                )
+                .unwrap_err(),
+            CacheError::InternalError { .. }
+        ));
+        assert!(cache
+            .contains_condition(&RuleName::from("test".to_string()), &base_state_hash)
+            .unwrap());
+    }
+
+    #[test]
+    fn apply_condition_update() {
+        let mut cache = example_cache();
+        let base_state_hash = StateHash::from_state(&State::from_entities(vec![(
+            EntityName::from("test".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("test".to_string()),
+                Amount::from(1.),
+            )]),
+        )]));
+        let update = ConditionCacheUpdate::from(
+            RuleName::from("test".to_string()),
+            base_state_hash,
+            RuleApplies::from(true),
+        );
+        cache.apply_condition_update(update).unwrap();
+        assert!(cache
+            .contains_condition(&RuleName::from("test".to_string()), &base_state_hash)
+            .unwrap());
+    }
+
+    #[test]
+    fn apply_action_update() {
+        let mut cache = example_cache();
+        let base_state_hash = StateHash::from_state(&State::from_entities(vec![(
+            EntityName::from("test".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("test".to_string()),
+                Amount::from(1.),
+            )]),
+        )]));
+        let update = ActionCacheUpdate::from(
+            RuleName::from("test".to_string()),
+            base_state_hash,
+            StateHash::new(),
+        );
+        cache.apply_action_update(update).unwrap();
+        assert_eq!(
+            cache
+                .action(&RuleName::from("test".to_string()), &base_state_hash)
+                .unwrap(),
+            StateHash::new()
+        );
+    }
+
+    #[test]
+    fn graph() {
+        let mut cache = example_cache();
+        let base_state = State::new();
+        let base_state_hash = StateHash::from_state(&base_state);
+        cache
+            .add_condition(
+                RuleName::from("test".to_string()),
+                base_state_hash,
+                RuleApplies::from(true),
+            )
+            .unwrap();
+        cache
+            .add_action(
+                RuleName::from("test".to_string()),
+                base_state_hash,
+                StateHash::new(),
+            )
+            .unwrap();
+        let mut possible_states = PossibleStates::new();
+        possible_states
+            .append_state(base_state_hash, base_state.clone())
+            .unwrap();
         let graph = cache.graph(possible_states);
-        assert_eq!(graph.node_count(), 2);
-        assert_eq!(graph.edge_count(), 1);
-        assert_eq!(graph.raw_nodes()[0].weight, base_state);
-        assert_eq!(graph.raw_nodes()[1].weight, new_state);
+        assert_eq!(graph.node_count(), 1);
+        assert_eq!(graph[NodeIndex::from(0)], base_state);
+    }
+
+    #[test]
+    fn merge() {
+        let mut cache = example_cache();
+        let base_state = State::from_entities(vec![(
+            EntityName::from("test".to_string()),
+            Entity::from_resources(vec![(
+                ResourceName::from("test".to_string()),
+                Amount::from(1.),
+            )]),
+        )]);
+        let base_state_hash = StateHash::from_state(&base_state);
+        cache
+            .add_condition(
+                RuleName::from("test".to_string()),
+                base_state_hash,
+                RuleApplies::from(true),
+            )
+            .unwrap();
+        cache
+            .add_action(
+                RuleName::from("test".to_string()),
+                base_state_hash,
+                StateHash::new(),
+            )
+            .unwrap();
+        let mut other_cache = example_cache();
+        let other_base_state = State::from_entities(vec![(EntityName::new(), Entity::new())]);
+        let other_base_state_hash = StateHash::from_state(&other_base_state);
+        other_cache
+            .add_condition(
+                RuleName::from("test".to_string()),
+                other_base_state_hash,
+                RuleApplies::from(true),
+            )
+            .unwrap();
+        other_cache
+            .add_action(
+                RuleName::from("test".to_string()),
+                other_base_state_hash,
+                StateHash::new(),
+            )
+            .unwrap();
+        cache.merge(&other_cache).unwrap();
+        assert!(cache
+            .contains_condition(&RuleName::from("test".to_string()), &base_state_hash)
+            .unwrap());
+        assert!(cache
+            .contains_condition(&RuleName::from("test".to_string()), &other_base_state_hash)
+            .unwrap());
+        assert_eq!(
+            cache
+                .action(&RuleName::from("test".to_string()), &base_state_hash)
+                .unwrap(),
+            StateHash::new()
+        );
+        assert_eq!(
+            cache
+                .action(&RuleName::from("test".to_string()), &other_base_state_hash)
+                .unwrap(),
+            StateHash::new()
+        );
     }
 }
