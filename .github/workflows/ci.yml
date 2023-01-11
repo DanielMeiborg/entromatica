@@ -2,11 +2,7 @@
 
 name: CI
 
-on:
-  pull_request:
-  push:
-  schedule:
-    - cron: "0 7 * * *" # run once per day at 7:00 am
+on: push
 
 env:
   RUST_BACKTRACE: 1
