@@ -326,7 +326,7 @@ pub enum StateError {
     EntityError(#[from] EntityError),
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Display, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut)]
 pub struct StateHash(u64);
 
 impl StateHash {
