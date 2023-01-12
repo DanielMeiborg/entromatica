@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/DanielMeiborg/entromatica/compare/v0.17.1...v0.17.2) (2023-01-12)
+
+
+### Features
+
+* conversion from u64 to StateHash ([e439bd7](https://github.com/DanielMeiborg/entromatica/commit/e439bd7c1f15f56e0995ac71426db395ad152388))
+
 ## [0.17.1](https://github.com/DanielMeiborg/entromatica/compare/v0.17.0...v0.17.1) (2023-01-11)
 
 
