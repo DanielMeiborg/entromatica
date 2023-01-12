@@ -137,18 +137,14 @@ fn setup() -> Simulation {
     Simulation::from(resources, initial_state, rules).unwrap()
 }
 
+/// This test simulates a one dimensional random walk with connected edges.
 #[test]
 fn random_walk() {
     let mut simulation = setup();
     assert_eq!(simulation.reachable_states().len(), 1);
     assert_eq!(simulation.entropy(), Entropy::from(0.));
     for _ in 0..MAX_TIME {
-        match simulation.next_step() {
-            Ok(_) => (),
-            Err(e) => {
-                panic!("Error: {:#?}", e);
-            }
-        };
+        simulation.next_step().unwrap();
     }
     assert_eq!(simulation.reachable_states().len(), MAX_ENTITIES);
     assert_eq!(simulation.entropy(), Entropy::from(2.3009662938553714));
