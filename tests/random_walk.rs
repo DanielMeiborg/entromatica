@@ -148,4 +148,21 @@ fn random_walk() {
     }
     assert_eq!(simulation.reachable_states().len(), MAX_ENTITIES);
     assert_eq!(simulation.entropy(), Entropy::from(2.3009662938553714));
+    let expected_reachable_states = {
+        let mut expected_reachable_states = ReachableStates::new();
+        let expected_reachable_states_vec: Vec<(u64, f64)> = vec![
+            (11226580366093714904, 0.21484375),
+            (8191300176973006429, 0.21484375),
+            (2706781963007730578, 0.248046875),
+            (9471348733962185969, 0.1611328125),
+            (4265551905928795132, 0.1611328125),
+        ];
+        for (state_hash, probability) in expected_reachable_states_vec {
+            expected_reachable_states
+                .append_state(StateHash::from(state_hash), Probability::from(probability))
+                .unwrap();
+        }
+        expected_reachable_states
+    };
+    assert_eq!(simulation.reachable_states(), &expected_reachable_states);
 }
