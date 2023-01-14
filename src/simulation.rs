@@ -170,6 +170,16 @@ impl Simulation {
         Ok(())
     }
 
+    /// Performs a full traversal of the possible states of the system.
+    ///
+    /// This method will continue to call `next_step()` until all possible states have been visited.
+    /// If an `iteration_limit` is provided, the traversal will stop if the time spent exceeds the limit.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorKind::IterationLimitReached` - If the traversal took longer than the provided iteration limit.
+    ///   Note that any progress will be  applied to the simulation.
+    /// ```
     pub fn full_traversal(&mut self, iteration_limit: Option<Time>) -> Result<(), ErrorKind> {
         let mut num_current_possible_states = 0;
         while num_current_possible_states != self.possible_states().len() {
