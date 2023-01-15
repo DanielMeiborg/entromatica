@@ -45,26 +45,12 @@ impl Display for Simulation {
 }
 
 impl Simulation {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
-            parameters: HashMap::new(),
-            initial_state: State::new(),
-            possible_states: PossibleStates::new(),
-            reachable_states: ReachableStates::new(),
-            rules: HashMap::new(),
-            time: Time::new(),
-            entropy: Entropy::new(),
-            cache: Cache::new(),
-        }
-    }
-
-    pub fn from(
+    pub fn new(
         parameters: HashMap<ParameterName, Parameter>,
         initial_state: State,
         rules: HashMap<RuleName, Rule>,
     ) -> Result<Simulation, EntityError> {
-        let initial_state_hash = StateHash::from_state(&initial_state);
+        let initial_state_hash = StateHash::new(&initial_state);
         for (_, entity) in initial_state.iter_entities() {
             for (parameter_name, _) in entity.iter_parameters() {
                 if !parameters.contains_key(parameter_name) {
@@ -165,7 +151,7 @@ impl Simulation {
     }
 
     pub fn uniform_distribution_is_steady(&self) -> Result<bool, ErrorKind> {
-        let mut simulation = Simulation::from(
+        let mut simulation = Simulation::new(
             self.parameters.clone(),
             self.initial_state.clone(),
             self.rules.clone(),

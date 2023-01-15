@@ -15,8 +15,8 @@ use crate::prelude::*;
 pub struct ParameterName(String);
 
 impl ParameterName {
-    pub fn new() -> Self {
-        Self("".to_string())
+    pub fn new(name: &str) -> Self {
+        Self(name.to_string())
     }
 }
 
