@@ -7,7 +7,6 @@ use crate::prelude::*;
 
 #[derive(Clone, Debug, Default)]
 pub struct Simulation {
-    parameters: HashMap<ParameterName, Parameter>,
     initial_state: State,
     possible_states: PossibleStates,
     reachable_states: ReachableStates,
@@ -23,9 +22,6 @@ impl Display for Simulation {
         writeln!(f, "  Time: {}", self.time)?;
         writeln!(f, "  Entropy: {}", self.entropy)?;
         writeln!(f, "  Parameters:")?;
-        for (parameter_name, parameter) in self.parameters.iter() {
-            writeln!(f, "    {parameter_name}: {parameter}")?;
-        }
         writeln!(f, "  Initial state:")?;
         writeln!(f, "{}", self.initial_state)?;
         writeln!(f, "  Possible states:")?;
@@ -45,25 +41,9 @@ impl Display for Simulation {
 }
 
 impl Simulation {
-    pub fn new(
-        parameters: HashMap<ParameterName, Parameter>,
-        initial_state: State,
-        rules: HashMap<RuleName, Rule>,
-    ) -> Result<Simulation, EntityError> {
+    pub fn new(initial_state: State, rules: HashMap<RuleName, Rule>) -> Simulation {
         let initial_state_hash = StateHash::new(&initial_state);
-        for (_, entity) in initial_state.iter_entities() {
-            for (parameter_name, _) in entity.iter_parameters() {
-                if !parameters.contains_key(parameter_name) {
-                    return Err(EntityError::ParameterNotFound {
-                        parameter_name: parameter_name.clone(),
-                        context: get_backtrace(),
-                    });
-                }
-            }
-        }
-
-        Ok(Simulation {
-            parameters,
+        Simulation {
             initial_state: initial_state.clone(),
             possible_states: PossibleStates::from(HashMap::from([(
                 initial_state_hash,
@@ -77,11 +57,7 @@ impl Simulation {
             time: Time::from(0),
             entropy: Entropy::from(0.),
             cache: Cache::new(),
-        })
-    }
-
-    pub fn parameters(&self) -> &HashMap<ParameterName, Parameter> {
-        &self.parameters
+        }
     }
 
     pub fn initial_state(&self) -> &State {
@@ -151,11 +127,7 @@ impl Simulation {
     }
 
     pub fn uniform_distribution_is_steady(&self) -> Result<bool, ErrorKind> {
-        let mut simulation = Simulation::new(
-            self.parameters.clone(),
-            self.initial_state.clone(),
-            self.rules.clone(),
-        )?;
+        let mut simulation = Simulation::new(self.initial_state.clone(), self.rules.clone());
         let mut current_reachable_states = simulation.reachable_states.clone();
         while current_reachable_states.len() != self.reachable_states.len()
             && current_reachable_states

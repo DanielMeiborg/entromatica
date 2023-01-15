@@ -16,6 +16,15 @@ use thiserror::Error;
 
 use crate::prelude::*;
 
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, AsRef, AsMut, Into)]
+pub struct ParameterName(String);
+
+impl ParameterName {
+    pub fn new(name: &str) -> Self {
+        Self(name.to_string())
+    }
+}
+
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Entity {
     parameters: HashMap<ParameterName, Amount>,
@@ -143,6 +152,10 @@ impl State {
             })
     }
 
+    pub fn insert_entity(&mut self, entity_name: EntityName, entity: Entity) {
+        self.entities.insert(entity_name, entity);
+    }
+
     pub fn entity_mut(&mut self, entity_name: &EntityName) -> Result<&mut Entity, StateError> {
         self.entities
             .get_mut(entity_name)
@@ -160,29 +173,28 @@ impl State {
         self.entities.iter_mut()
     }
 
-    pub(crate) fn apply_actions(
-        &self,
-        actions: HashMap<ActionName, Action>,
-    ) -> Result<State, StateError> {
-        let mut new_state = self.clone();
-        let mut affected_parameters: HashSet<(EntityName, ParameterName)> = HashSet::new();
-        for (_, action) in actions {
-            if affected_parameters.contains(&(action.target().clone(), action.parameter().clone()))
-            {
-                return Err(StateError::ParameterAlreadyAffected {
-                    parameter_name: action.parameter().clone(),
-                    entity_name: action.target().clone(),
-                    context: get_backtrace(),
-                });
-            } else {
-                affected_parameters.insert((action.target().clone(), action.parameter().clone()));
-            }
-            new_state
-                .entity_mut(action.target())?
-                .parameters
-                .insert(action.parameter().clone(), action.amount());
-        }
-        Ok(new_state)
+    pub(crate) fn adjust_parameter(
+        &mut self,
+        target: &EntityName,
+        parameter: ParameterName,
+        amount: Amount,
+    ) -> Result<(), StateError> {
+        let entity = self.entity_mut(target)?;
+        let parameter = entity.parameter_mut(&parameter)?;
+        *parameter += amount;
+        Ok(())
+    }
+
+    pub(crate) fn set_parameter(
+        &mut self,
+        target: &EntityName,
+        parameter: ParameterName,
+        amount: Amount,
+    ) -> Result<(), StateError> {
+        let entity = self.entity_mut(target)?;
+        let parameter = entity.parameter_mut(&parameter)?;
+        *parameter = amount;
+        Ok(())
     }
 
     pub(crate) fn reachable_states(
@@ -701,87 +713,6 @@ mod tests {
             .cloned()
         {
             assert_eq!(entity_name, EntityName::new("missing_entity"));
-        } else {
-            panic!("Unexpected error type");
-        }
-    }
-
-    #[test]
-    fn apply_actions_should_apply_actions_to_state() {
-        let state = State::new(vec![(
-            EntityName::new("A"),
-            Entity::new(vec![
-                (ParameterName::new("Parameter"), Amount::from(0.)),
-                (ParameterName::new("Parameter2"), Amount::from(0.)),
-            ]),
-        )]);
-        let actions = HashMap::from([
-            (
-                ActionName::new("Action 1"),
-                Action::new(
-                    ParameterName::new("Parameter"),
-                    EntityName::new("A"),
-                    Amount::from(1.),
-                ),
-            ),
-            (
-                ActionName::new("Action 2"),
-                Action::new(
-                    ParameterName::new("Parameter2"),
-                    EntityName::new("A"),
-                    Amount::from(2.),
-                ),
-            ),
-        ]);
-        let new_state = state.apply_actions(actions).unwrap();
-        assert_eq!(
-            new_state,
-            State::new(vec![(
-                EntityName::new("A"),
-                Entity::new(vec![
-                    (ParameterName::new("Parameter"), Amount::from(1.)),
-                    (ParameterName::new("Parameter2"), Amount::from(2.)),
-                ]),
-            )])
-        );
-    }
-
-    #[test]
-    fn apply_actions_should_return_error_on_multiple_actions_affecting_the_same_parameter() {
-        let state = State::new(vec![(
-            EntityName::new("A"),
-            Entity::new(vec![
-                (ParameterName::new("Parameter"), Amount::from(0.)),
-                (ParameterName::new("Parameter2"), Amount::from(0.)),
-            ]),
-        )]);
-        let actions = HashMap::from([
-            (
-                ActionName::new("Action 1"),
-                Action::new(
-                    ParameterName::new("Parameter"),
-                    EntityName::new("A"),
-                    Amount::from(1.),
-                ),
-            ),
-            (
-                ActionName::new("Action 2"),
-                Action::new(
-                    ParameterName::new("Parameter"),
-                    EntityName::new("A"),
-                    Amount::from(2.),
-                ),
-            ),
-        ]);
-
-        if let Err(StateError::ParameterAlreadyAffected {
-            parameter_name,
-            entity_name,
-            ..
-        }) = state.apply_actions(actions)
-        {
-            assert_eq!(parameter_name, ParameterName::new("Parameter"));
-            assert_eq!(entity_name, EntityName::new("A"));
         } else {
             panic!("Unexpected error type");
         }
