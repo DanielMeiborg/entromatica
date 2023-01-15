@@ -287,7 +287,6 @@ impl Cache {
         )
     }
 
-    ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
     pub fn graph(&self, possible_states: PossibleStates) -> Graph<State, RuleName> {
         let mut graph = Graph::<State, RuleName>::new();
         let mut nodes: HashMap<StateHash, NodeIndex> = HashMap::new();
@@ -468,8 +467,8 @@ mod tests {
             .unwrap();
         let new_new_state_hash = StateHash::from_state(&State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]));
@@ -527,8 +526,8 @@ mod tests {
         let base_state_hash = StateHash::from_state(&base_state);
         let new_state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]);

@@ -16,17 +16,16 @@ use thiserror::Error;
 
 use crate::prelude::*;
 
-/// A single entity in the simulation.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Entity {
-    resources: HashMap<ResourceName, Amount>,
+    parameters: HashMap<ParameterName, Amount>,
 }
 
 impl Display for Entity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Entity:")?;
-        for (resource_name, amount) in &self.resources {
-            writeln!(f, "  {resource_name}: {amount}")?;
+        for (parameter_name, amount) in &self.parameters {
+            writeln!(f, "  {parameter_name}: {amount}")?;
         }
         Ok(())
     }
@@ -35,52 +34,52 @@ impl Display for Entity {
 impl Entity {
     pub fn new() -> Self {
         Self {
-            resources: HashMap::new(),
+            parameters: HashMap::new(),
         }
     }
 
-    pub fn from_resources(resources: Vec<(ResourceName, Amount)>) -> Self {
+    pub fn from_parameters(parameters: Vec<(ParameterName, Amount)>) -> Self {
         Self {
-            resources: resources.into_iter().collect(),
+            parameters: parameters.into_iter().collect(),
         }
     }
 
-    pub fn resource(&self, resource_name: &ResourceName) -> Result<&Amount, EntityError> {
-        self.resources
-            .get(resource_name)
-            .ok_or_else(|| EntityError::ResourceNotFound {
-                resource_name: resource_name.clone(),
+    pub fn parameter(&self, parameter_name: &ParameterName) -> Result<&Amount, EntityError> {
+        self.parameters
+            .get(parameter_name)
+            .ok_or_else(|| EntityError::ParameterNotFound {
+                parameter_name: parameter_name.clone(),
                 context: get_backtrace(),
             })
     }
 
-    pub fn resource_mut(
+    pub fn parameter_mut(
         &mut self,
-        resource_name: &ResourceName,
+        parameter_name: &ParameterName,
     ) -> Result<&mut Amount, EntityError> {
-        self.resources
-            .get_mut(resource_name)
-            .ok_or_else(|| EntityError::ResourceNotFound {
-                resource_name: resource_name.clone(),
+        self.parameters
+            .get_mut(parameter_name)
+            .ok_or_else(|| EntityError::ParameterNotFound {
+                parameter_name: parameter_name.clone(),
                 context: get_backtrace(),
             })
     }
 
-    pub fn iter_resources(&self) -> impl Iterator<Item = (&ResourceName, &Amount)> {
-        self.resources.iter()
+    pub fn iter_parameters(&self) -> impl Iterator<Item = (&ParameterName, &Amount)> {
+        self.parameters.iter()
     }
 
-    pub fn iter_resources_mut(&mut self) -> impl Iterator<Item = (&ResourceName, &mut Amount)> {
-        self.resources.iter_mut()
+    pub fn iter_parameters_mut(&mut self) -> impl Iterator<Item = (&ParameterName, &mut Amount)> {
+        self.parameters.iter_mut()
     }
 }
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Error)]
 pub enum EntityError {
-    #[error("Resource not found: {resource_name:#?}")]
-    ResourceNotFound {
-        resource_name: ResourceName,
+    #[error("Parameter not found: {parameter_name:#?}")]
+    ParameterNotFound {
+        parameter_name: ParameterName,
         context: trc,
     },
 }
@@ -94,8 +93,6 @@ impl EntityName {
     }
 }
 
-/// A possible state in the markov chain of the simulation, which is only dependent on
-/// the configuration of the entities in the simulation.
 #[derive(Clone, Debug, Default, From, Into)]
 pub struct State {
     entities: HashMap<EntityName, Entity>,
@@ -106,8 +103,8 @@ impl Display for State {
         writeln!(f, "State:")?;
         for (entity_name, entity) in &self.entities {
             writeln!(f, "  {entity_name}:")?;
-            for (resource_name, amount) in &entity.resources {
-                writeln!(f, "    {resource_name}: {amount}")?;
+            for (parameter_name, amount) in &entity.parameters {
+                writeln!(f, "    {parameter_name}: {amount}")?;
             }
         }
         Ok(())
@@ -117,8 +114,8 @@ impl Display for State {
 impl Hash for State {
     fn hash<H: Hasher>(&self, state: &mut H) {
         for (name, entity) in &self.entities {
-            for (resource_name, amount) in &entity.resources {
-                (name.clone(), resource_name.clone(), *amount).hash(state);
+            for (parameter_name, amount) in &entity.parameters {
+                (name.clone(), parameter_name.clone(), *amount).hash(state);
             }
         }
     }
@@ -180,21 +177,22 @@ impl State {
         actions: HashMap<ActionName, Action>,
     ) -> Result<State, StateError> {
         let mut new_state = self.clone();
-        let mut affected_resources: HashSet<(EntityName, ResourceName)> = HashSet::new();
+        let mut affected_parameters: HashSet<(EntityName, ParameterName)> = HashSet::new();
         for (_, action) in actions {
-            if affected_resources.contains(&(action.target().clone(), action.resource().clone())) {
-                return Err(StateError::ResourceAlreadyAffected {
-                    resource_name: action.resource().clone(),
+            if affected_parameters.contains(&(action.target().clone(), action.parameter().clone()))
+            {
+                return Err(StateError::ParameterAlreadyAffected {
+                    parameter_name: action.parameter().clone(),
                     entity_name: action.target().clone(),
                     context: get_backtrace(),
                 });
             } else {
-                affected_resources.insert((action.target().clone(), action.resource().clone()));
+                affected_parameters.insert((action.target().clone(), action.parameter().clone()));
             }
             new_state
                 .entity_mut(action.target())?
-                .resources
-                .insert(action.resource().clone(), action.amount());
+                .parameters
+                .insert(action.parameter().clone(), action.amount());
         }
         Ok(new_state)
     }
@@ -205,7 +203,6 @@ impl State {
         rules: &HashMap<RuleName, Rule>,
         possible_states: &PossibleStates,
         cache: &Cache,
-        resources: &HashMap<ResourceName, Resource>,
     ) -> Result<
         (
             ReachableStates,
@@ -242,7 +239,6 @@ impl State {
                     rule_name.clone(),
                     base_state_hash,
                     base_state.clone(),
-                    resources,
                 )?;
                 if let Some(cache) = action_cache_update {
                     action_cache_updates.push(cache);
@@ -315,9 +311,9 @@ pub enum StateError {
         context: trc,
     },
 
-    #[error("Resource {resource_name:#?} already affected for entity {entity_name:#?}")]
-    ResourceAlreadyAffected {
-        resource_name: ResourceName,
+    #[error("Parameter {parameter_name:#?} already affected for entity {entity_name:#?}")]
+    ParameterAlreadyAffected {
+        parameter_name: ParameterName,
         entity_name: EntityName,
         context: trc,
     },
@@ -518,7 +514,6 @@ impl ReachableStates {
         )
     }
 
-    /// Gets the entropy of the current probability distribution.
     pub fn entropy(&self) -> Entropy {
         Entropy::from(
             self.0
@@ -534,12 +529,10 @@ impl ReachableStates {
         )
     }
 
-    /// Update reachable_states and possible_states to the next time step.
     pub(crate) fn apply_rules(
         &mut self,
         possible_states: &mut PossibleStates,
         cache: &mut Cache,
-        resources: &HashMap<ResourceName, Resource>,
         rules: &HashMap<RuleName, Rule>,
     ) -> Result<(), ErrorKind> {
         let new_reachable_states_mutex = Mutex::new(ReachableStates::new());
@@ -553,7 +546,6 @@ impl ReachableStates {
                     rules,
                     possible_states,
                     cache,
-                    resources,
                 )
             })
             .try_for_each(|result| {
@@ -622,12 +614,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn entity_get_resource_should_return_value_on_present_resource() {
-        let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
-        let entity = Entity::from_resources(resources);
+    fn entity_get_parameter_should_return_value_on_present_parameter() {
+        let parameters = vec![(
+            ParameterName::from("parameter".to_string()),
+            Amount::from(1.),
+        )];
+        let entity = Entity::from_parameters(parameters);
         assert_eq!(
             entity
-                .resource(&ResourceName::from("resource".to_string()))
+                .parameter(&ParameterName::from("parameter".to_string()))
                 .cloned()
                 .unwrap(),
             Amount::from(1.)
@@ -635,15 +630,18 @@ mod tests {
     }
 
     #[test]
-    fn entity_get_resource_should_return_error_on_missing_resource() {
-        let resources = vec![(ResourceName::from("resource".to_string()), Amount::from(1.))];
-        let entity = Entity::from_resources(resources);
-        if let Err(EntityError::ResourceNotFound { resource_name, .. }) =
-            entity.resource(&ResourceName::from("missing_resource".to_string()))
+    fn entity_get_parameter_should_return_error_on_missing_parameter() {
+        let parameters = vec![(
+            ParameterName::from("parameter".to_string()),
+            Amount::from(1.),
+        )];
+        let entity = Entity::from_parameters(parameters);
+        if let Err(EntityError::ParameterNotFound { parameter_name, .. }) =
+            entity.parameter(&ParameterName::from("missing_parameter".to_string()))
         {
             assert_eq!(
-                resource_name,
-                ResourceName::from("missing_resource".to_string())
+                parameter_name,
+                ParameterName::from("missing_parameter".to_string())
             );
         } else {
             panic!("Unexpected error type");
@@ -654,29 +652,29 @@ mod tests {
     fn state_partial_equal_works_as_expected() {
         let state_a_0 = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]);
         let state_a_1 = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]);
         let state_b = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(1.),
             )]),
         )]);
         let state_c = State::from_entities(vec![(
             EntityName::from("B".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(1.),
             )]),
         )]);
@@ -690,8 +688,8 @@ mod tests {
     fn state_get_entity_should_return_value_on_present_entity() {
         let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]);
@@ -701,8 +699,8 @@ mod tests {
                 .entity(&EntityName::from("A".to_string()),)
                 .cloned()
                 .unwrap(),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.)
             )])
         );
@@ -712,8 +710,8 @@ mod tests {
     fn state_get_entity_should_return_error_on_missing_entity() {
         let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]);
@@ -732,8 +730,8 @@ mod tests {
     fn state_get_mut_entity_should_return_value_on_present_entity() {
         let mut state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]);
@@ -742,8 +740,8 @@ mod tests {
             state
                 .entity_mut(&EntityName::from("A".to_string()),)
                 .unwrap(),
-            &mut Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            &mut Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.)
             )])
         );
@@ -753,8 +751,8 @@ mod tests {
     fn state_get_mut_entity_should_return_error_on_missing_entity() {
         let mut state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]);
@@ -773,10 +771,13 @@ mod tests {
     fn apply_actions_should_apply_actions_to_state() {
         let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![
-                (ResourceName::from("Resource".to_string()), Amount::from(0.)),
+            Entity::from_parameters(vec![
                 (
-                    ResourceName::from("Resource2".to_string()),
+                    ParameterName::from("Parameter".to_string()),
+                    Amount::from(0.),
+                ),
+                (
+                    ParameterName::from("Parameter2".to_string()),
                     Amount::from(0.),
                 ),
             ]),
@@ -785,7 +786,7 @@ mod tests {
             (
                 ActionName::from("Action 1".to_string()),
                 Action::from(
-                    ResourceName::from("Resource".to_string()),
+                    ParameterName::from("Parameter".to_string()),
                     EntityName::from("A".to_string()),
                     Amount::from(1.),
                 ),
@@ -793,7 +794,7 @@ mod tests {
             (
                 ActionName::from("Action 2".to_string()),
                 Action::from(
-                    ResourceName::from("Resource2".to_string()),
+                    ParameterName::from("Parameter2".to_string()),
                     EntityName::from("A".to_string()),
                     Amount::from(2.),
                 ),
@@ -804,10 +805,13 @@ mod tests {
             new_state,
             State::from_entities(vec![(
                 EntityName::from("A".to_string()),
-                Entity::from_resources(vec![
-                    (ResourceName::from("Resource".to_string()), Amount::from(1.)),
+                Entity::from_parameters(vec![
                     (
-                        ResourceName::from("Resource2".to_string()),
+                        ParameterName::from("Parameter".to_string()),
+                        Amount::from(1.)
+                    ),
+                    (
+                        ParameterName::from("Parameter2".to_string()),
                         Amount::from(2.)
                     ),
                 ]),
@@ -816,13 +820,16 @@ mod tests {
     }
 
     #[test]
-    fn apply_actions_should_return_error_on_multiple_actions_affecting_the_same_resource() {
+    fn apply_actions_should_return_error_on_multiple_actions_affecting_the_same_parameter() {
         let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![
-                (ResourceName::from("Resource".to_string()), Amount::from(0.)),
+            Entity::from_parameters(vec![
                 (
-                    ResourceName::from("Resource2".to_string()),
+                    ParameterName::from("Parameter".to_string()),
+                    Amount::from(0.),
+                ),
+                (
+                    ParameterName::from("Parameter2".to_string()),
                     Amount::from(0.),
                 ),
             ]),
@@ -831,7 +838,7 @@ mod tests {
             (
                 ActionName::from("Action 1".to_string()),
                 Action::from(
-                    ResourceName::from("Resource".to_string()),
+                    ParameterName::from("Parameter".to_string()),
                     EntityName::from("A".to_string()),
                     Amount::from(1.),
                 ),
@@ -839,20 +846,20 @@ mod tests {
             (
                 ActionName::from("Action 2".to_string()),
                 Action::from(
-                    ResourceName::from("Resource".to_string()),
+                    ParameterName::from("Parameter".to_string()),
                     EntityName::from("A".to_string()),
                     Amount::from(2.),
                 ),
             ),
         ]);
 
-        if let Err(StateError::ResourceAlreadyAffected {
-            resource_name,
+        if let Err(StateError::ParameterAlreadyAffected {
+            parameter_name,
             entity_name,
             ..
         }) = state.apply_actions(actions)
         {
-            assert_eq!(resource_name, ResourceName::from("Resource".to_string()));
+            assert_eq!(parameter_name, ParameterName::from("Parameter".to_string()));
             assert_eq!(entity_name, EntityName::from("A".to_string()));
         } else {
             panic!("Unexpected error type");
@@ -863,10 +870,13 @@ mod tests {
     fn possible_states_append_state() {
         let state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![
-                (ResourceName::from("Resource".to_string()), Amount::from(0.)),
+            Entity::from_parameters(vec![
                 (
-                    ResourceName::from("Resource2".to_string()),
+                    ParameterName::from("Parameter".to_string()),
+                    Amount::from(0.),
+                ),
+                (
+                    ParameterName::from("Parameter2".to_string()),
                     Amount::from(0.),
                 ),
             ]),
@@ -881,10 +891,13 @@ mod tests {
 
         let new_state = State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![
-                (ResourceName::from("Resource".to_string()), Amount::from(1.)),
+            Entity::from_parameters(vec![
                 (
-                    ResourceName::from("Resource2".to_string()),
+                    ParameterName::from("Parameter".to_string()),
+                    Amount::from(1.),
+                ),
+                (
+                    ParameterName::from("Parameter2".to_string()),
                     Amount::from(2.),
                 ),
             ]),
@@ -923,8 +936,8 @@ mod tests {
             .unwrap();
         let state_hash = StateHash::from_state(&State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]));
@@ -946,8 +959,8 @@ mod tests {
             .unwrap();
         let state_hash = StateHash::from_state(&State::from_entities(vec![(
             EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
+            Entity::from_parameters(vec![(
+                ParameterName::from("Parameter".to_string()),
                 Amount::from(0.),
             )]),
         )]));

@@ -12,10 +12,9 @@ use thiserror::Error;
 
 use crate::prelude::*;
 
-/// An action a rule can take on a single entity and resource when its condition is met.
 #[derive(PartialEq, Clone, Debug, Default)]
 pub struct Action {
-    resource: ResourceName,
+    parameter: ParameterName,
     target: EntityName,
     amount: Amount,
 }
@@ -25,7 +24,7 @@ impl Display for Action {
         writeln!(
             f,
             "Action: set {} of {} to {}",
-            self.resource, self.target, self.amount
+            self.parameter, self.target, self.amount
         )
     }
 }
@@ -33,15 +32,15 @@ impl Display for Action {
 impl Action {
     pub fn new() -> Self {
         Self {
-            resource: ResourceName::new(),
+            parameter: ParameterName::new(),
             target: EntityName::new(),
             amount: Amount::new(),
         }
     }
 
-    pub fn from(resource: ResourceName, target: EntityName, amount: Amount) -> Self {
+    pub fn from(parameter: ParameterName, target: EntityName, amount: Amount) -> Self {
         Self {
-            resource,
+            parameter,
             target,
             amount,
         }
@@ -51,8 +50,8 @@ impl Action {
         &self.target
     }
 
-    pub fn resource(&self) -> &ResourceName {
-        &self.resource
+    pub fn parameter(&self) -> &ParameterName {
+        &self.parameter
     }
 
     pub fn amount(&self) -> Amount {
@@ -117,24 +116,11 @@ impl ProbabilityWeight {
     }
 }
 
-/// An abstraction over the transition rates of the underlying markov chain.
 #[derive(Clone, Debug, PartialEq, Hash)]
 pub struct Rule {
     description: String,
-
-    /// The conditions that must be met for the rule to be applied.
     condition: fn(State) -> RuleApplies,
-
-    /// A measure of how often the rule is applied when the condition is met.
-    ///
-    /// As two rules cannot be applied at the same time, first, the probability that no rule applies is calculated.
-    /// The remaining probability is divived among the remaining rules according to their weights.
     weight: ProbabilityWeight,
-
-    /// A function which specifies to which state the rule leads when applied.
-    ///
-    /// The function takes the current state as input and returns multiple actions.
-    /// A new state is then created by applying all actions to the current state.
     actions: fn(State) -> HashMap<ActionName, Action>,
 }
 
@@ -176,7 +162,6 @@ impl Rule {
         }
     }
 
-    /// Checks if a given rule applies to the given state using or updating the cache respectively.
     pub(crate) fn applies(
         &self,
         cache: &Cache,
@@ -203,7 +188,6 @@ impl Rule {
         rule_name: RuleName,
         base_state_hash: StateHash,
         base_state: State,
-        resources: &HashMap<ResourceName, Resource>,
     ) -> Result<(State, Option<ActionCacheUpdate>), ErrorKind> {
         if cache.contains_action(&rule_name, &base_state_hash)? {
             Ok((
@@ -216,8 +200,6 @@ impl Rule {
         } else {
             let actions = (self.actions)(base_state.clone());
             let new_state = base_state.apply_actions(actions)?;
-
-            Resource::check_resource_capacities(resources, &new_state)?;
 
             let new_state_hash = StateHash::from_state(&new_state);
             let cache = ActionCacheUpdate::from(rule_name, base_state_hash, new_state_hash);
@@ -351,7 +333,6 @@ mod tests {
                 rule_name,
                 state_hash,
                 state.clone(),
-                &HashMap::new(),
             )
             .unwrap();
         assert_eq!(new_state, state);
@@ -378,7 +359,6 @@ mod tests {
                 rule_name,
                 state_hash,
                 state.clone(),
-                &HashMap::new(),
             )
             .unwrap();
         assert_eq!(new_state, state);
