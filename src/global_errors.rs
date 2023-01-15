@@ -26,9 +26,6 @@ pub enum ErrorKind {
     #[error("Internal error: {0:#?}")]
     InternalError(#[from] InternalError),
 
-    #[error("ResourceError: {0:#?}")]
-    ResourceError(#[from] ResourceError),
-
     #[error("PossibleStatesError: {0:#?}")]
     PossibleStatesError(#[from] PossibleStatesError),
 
@@ -43,6 +40,9 @@ pub enum ErrorKind {
 
     #[error("ReachableStatesError: {0:#?}")]
     ReachableStatesError(#[from] ReachableStatesError),
+
+    #[error("The simulation has reached the iteration limit of {time} timesteps.")]
+    IterationLimitReached { time: Time, context: trc },
 }
 
 impl From<CacheError> for ErrorKind {

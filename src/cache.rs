@@ -287,7 +287,6 @@ impl Cache {
         )
     }
 
-    ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
     pub fn graph(&self, possible_states: PossibleStates) -> Graph<State, RuleName> {
         let mut graph = Graph::<State, RuleName>::new();
         let mut nodes: HashMap<StateHash, NodeIndex> = HashMap::new();
@@ -366,15 +365,7 @@ impl Display for ConditionCacheUpdate {
 
 impl ConditionCacheUpdate {
     #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
-            rule_name: RuleName::new(),
-            base_state_hash: StateHash::new(),
-            applies: RuleApplies::new(),
-        }
-    }
-
-    pub fn from(rule_name: RuleName, base_state_hash: StateHash, applies: RuleApplies) -> Self {
+    pub fn new(rule_name: RuleName, base_state_hash: StateHash, applies: RuleApplies) -> Self {
         Self {
             rule_name,
             base_state_hash,
@@ -401,20 +392,7 @@ impl Display for ActionCacheUpdate {
 }
 
 impl ActionCacheUpdate {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
-            rule_name: RuleName::new(),
-            base_state_hash: StateHash::new(),
-            new_state_hash: StateHash::new(),
-        }
-    }
-
-    pub fn from(
-        rule_name: RuleName,
-        base_state_hash: StateHash,
-        new_state_hash: StateHash,
-    ) -> Self {
+    pub fn new(rule_name: RuleName, base_state_hash: StateHash, new_state_hash: StateHash) -> Self {
         Self {
             rule_name,
             base_state_hash,
@@ -430,9 +408,9 @@ mod tests {
     #[test]
     fn cache_add_should_work() {
         let mut cache = Cache::new();
-        let rule_name = RuleName::from("test".to_string());
-        let base_state_hash = StateHash::new();
-        let new_state_hash = StateHash::new();
+        let rule_name = RuleName::new("test");
+        let base_state_hash = StateHash::new(&State::default());
+        let new_state_hash = StateHash::new(&State::default());
         let applies = RuleApplies::from(true);
         cache
             .add_condition(rule_name.clone(), base_state_hash, applies)
@@ -456,9 +434,9 @@ mod tests {
     #[test]
     fn cache_no_overwriting_values() {
         let mut cache = Cache::new();
-        let rule_name = RuleName::from("test".to_string());
-        let base_state_hash = StateHash::new();
-        let new_state_hash = StateHash::new();
+        let rule_name = RuleName::new("test");
+        let base_state_hash = StateHash::new(&State::default());
+        let new_state_hash = StateHash::new(&State::default());
         let applies = RuleApplies::from(true);
         cache
             .add_condition(rule_name.clone(), base_state_hash, applies)
@@ -466,12 +444,9 @@ mod tests {
         cache
             .add_action(rule_name.clone(), base_state_hash, new_state_hash)
             .unwrap();
-        let new_new_state_hash = StateHash::from_state(&State::from_entities(vec![(
-            EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
-                Amount::from(0.),
-            )]),
+        let new_new_state_hash = StateHash::new(&State::new(vec![(
+            EntityName::new("A"),
+            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
         )]));
         let new_applies = RuleApplies::from(false);
         cache
@@ -496,14 +471,14 @@ mod tests {
     #[test]
     fn cache_apply_updates() {
         let mut cache = Cache::new();
-        let rule_name = RuleName::from("test".to_string());
-        let base_state_hash = StateHash::new();
-        let new_state_hash = StateHash::new();
+        let rule_name = RuleName::new("test");
+        let base_state_hash = StateHash::new(&State::default());
+        let new_state_hash = StateHash::new(&State::default());
         let applies = RuleApplies::from(true);
         let condition_update =
-            ConditionCacheUpdate::from(rule_name.clone(), base_state_hash, applies);
+            ConditionCacheUpdate::new(rule_name.clone(), base_state_hash, applies);
         let action_update =
-            ActionCacheUpdate::from(rule_name.clone(), base_state_hash, new_state_hash);
+            ActionCacheUpdate::new(rule_name.clone(), base_state_hash, new_state_hash);
         cache.apply_condition_update(condition_update).unwrap();
         cache.apply_action_update(action_update).unwrap();
         assert_eq!(
@@ -522,17 +497,14 @@ mod tests {
     #[test]
     fn cache_get_graph() {
         let mut cache = Cache::new();
-        let rule_name = RuleName::from("test".to_string());
-        let base_state = State::new();
-        let base_state_hash = StateHash::from_state(&base_state);
-        let new_state = State::from_entities(vec![(
-            EntityName::from("A".to_string()),
-            Entity::from_resources(vec![(
-                ResourceName::from("Resource".to_string()),
-                Amount::from(0.),
-            )]),
+        let rule_name = RuleName::new("test");
+        let base_state = State::default();
+        let base_state_hash = StateHash::new(&base_state);
+        let new_state = State::new(vec![(
+            EntityName::new("A"),
+            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
         )]);
-        let new_state_hash = StateHash::from_state(&new_state);
+        let new_state_hash = StateHash::new(&new_state);
         let applies = RuleApplies::from(true);
         let possible_states = PossibleStates::from(HashMap::from([
             (base_state_hash, base_state.clone()),
