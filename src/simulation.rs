@@ -99,6 +99,33 @@ impl Simulation {
         Ok(())
     }
 
+    /// Performs a full traversal of the possible states of the system.
+    ///
+    /// This method will continue to call `next_step()` until all possible states have been visited.
+    /// If an `iteration_limit` is provided, the traversal will stop if the time spent exceeds the limit.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorKind::IterationLimitReached` - If the traversal took longer than the provided iteration limit.
+    ///   Note that any progress will be  applied to the simulation.
+    /// ```
+    pub fn full_traversal(&mut self, iteration_limit: Option<Time>) -> Result<(), ErrorKind> {
+        let mut num_current_possible_states = 0;
+        while num_current_possible_states != self.possible_states().len() {
+            if let Some(iteration_limit) = iteration_limit {
+                if self.time() >= iteration_limit {
+                    return Err(ErrorKind::IterationLimitReached {
+                        time: self.time(),
+                        context: get_backtrace(),
+                    });
+                }
+            }
+            num_current_possible_states = self.possible_states().len();
+            self.next_step()?;
+        }
+        Ok(())
+    }
+
     pub fn apply_intervention(&mut self, rules: &HashMap<RuleName, Rule>) -> Result<(), ErrorKind> {
         for rule_name in rules.keys() {
             if self.rules.contains_key(rule_name) {
@@ -128,16 +155,7 @@ impl Simulation {
 
     pub fn uniform_distribution_is_steady(&self) -> Result<bool, ErrorKind> {
         let mut simulation = Simulation::new(self.initial_state.clone(), self.rules.clone());
-        let mut current_reachable_states = simulation.reachable_states.clone();
-        while current_reachable_states.len() != self.reachable_states.len()
-            && current_reachable_states
-                .iter()
-                .map(|(state_hash, _)| state_hash)
-                .all(|state_hash| self.reachable_states.contains(state_hash))
-        {
-            current_reachable_states = simulation.reachable_states.clone();
-            simulation.next_step()?;
-        }
+        simulation.full_traversal(None)?;
         let uniform_probability = Probability::from(1. / simulation.possible_states.len() as f64);
         let uniform_distribution: ReachableStates = ReachableStates::from(HashMap::from_iter(
             simulation.possible_states.iter().map(|(state_hash, _)| {
