@@ -5,46 +5,14 @@ use petgraph::Graph;
 
 use crate::prelude::*;
 
-/// All information and methods needed to run the simulation.
-///
-/// All information is managed by the methods of this struct.
-/// Do not change properties manually.
 #[derive(Clone, Debug, Default)]
 pub struct Simulation {
-    /// All resources in the simulation.
-    ///
-    /// The key is the name of the resource, while the value the resource itself.
-    /// This must not change after initialization.
-    resources: HashMap<ResourceName, Resource>,
-
-    /// The initial state of the simulation.
-    ///
-    /// This state has a starting probability of 1.
-    /// This must not change after initialization.
     initial_state: State,
-
-    /// All states which are possible at at some point during the simulation.
-    ///
-    /// The key is the hash of the state, while the value is the state itself.
     possible_states: PossibleStates,
-
-    /// All states which are possible at the current timestep.
-    ///
-    /// The key is the hash of the state, while the value is the probability that this state occurs.
     reachable_states: ReachableStates,
-
-    /// All rules in the simulation.
-    ///
-    /// This must not change after initialization.
     rules: HashMap<RuleName, Rule>,
-
-    /// The current timestep of the simulation, starting at 0.
     time: Time,
-
-    /// The current entropy of the probability distribution of the reachable_states.
     entropy: Entropy,
-
-    /// The cache used for performance purposes.
     cache: Cache,
 }
 
@@ -53,10 +21,7 @@ impl Display for Simulation {
         writeln!(f, "Simulation:")?;
         writeln!(f, "  Time: {}", self.time)?;
         writeln!(f, "  Entropy: {}", self.entropy)?;
-        writeln!(f, "  Resources:")?;
-        for (resource_name, resource) in self.resources.iter() {
-            writeln!(f, "    {resource_name}: {resource}")?;
-        }
+        writeln!(f, "  Parameters:")?;
         writeln!(f, "  Initial state:")?;
         writeln!(f, "{}", self.initial_state)?;
         writeln!(f, "  Possible states:")?;
@@ -76,40 +41,9 @@ impl Display for Simulation {
 }
 
 impl Simulation {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
-            resources: HashMap::new(),
-            initial_state: State::new(),
-            possible_states: PossibleStates::new(),
-            reachable_states: ReachableStates::new(),
-            rules: HashMap::new(),
-            time: Time::new(),
-            entropy: Entropy::new(),
-            cache: Cache::new(),
-        }
-    }
-
-    /// Creates a new simulation with the given resources, initial state and rules.
-    pub fn from(
-        resources: HashMap<ResourceName, Resource>,
-        initial_state: State,
-        rules: HashMap<RuleName, Rule>,
-    ) -> Result<Simulation, EntityError> {
-        let initial_state_hash = StateHash::from_state(&initial_state);
-        for (_, entity) in initial_state.iter_entities() {
-            for (resource_name, _) in entity.iter_resources() {
-                if !resources.contains_key(resource_name) {
-                    return Err(EntityError::ResourceNotFound {
-                        resource_name: resource_name.clone(),
-                        context: get_backtrace(),
-                    });
-                }
-            }
-        }
-
-        Ok(Simulation {
-            resources,
+    pub fn new(initial_state: State, rules: HashMap<RuleName, Rule>) -> Simulation {
+        let initial_state_hash = StateHash::new(&initial_state);
+        Simulation {
             initial_state: initial_state.clone(),
             possible_states: PossibleStates::from(HashMap::from([(
                 initial_state_hash,
@@ -123,11 +57,7 @@ impl Simulation {
             time: Time::from(0),
             entropy: Entropy::from(0.),
             cache: Cache::new(),
-        })
-    }
-
-    pub fn resources(&self) -> &HashMap<ResourceName, Resource> {
-        &self.resources
+        }
     }
 
     pub fn initial_state(&self) -> &State {
@@ -154,7 +84,6 @@ impl Simulation {
         self.entropy
     }
 
-    /// Runs the simulation for one timestep.
     pub fn next_step(&mut self) -> Result<(), ErrorKind> {
         let rules = self.rules.clone();
         self.update_reachable_states(&rules)?;
@@ -216,26 +145,16 @@ impl Simulation {
         &mut self,
         rules: &HashMap<RuleName, Rule>,
     ) -> Result<(), ErrorKind> {
-        self.reachable_states.apply_rules(
-            &mut self.possible_states,
-            &mut self.cache,
-            &self.resources,
-            rules,
-        )
+        self.reachable_states
+            .apply_rules(&mut self.possible_states, &mut self.cache, rules)
     }
 
-    ///Gets a graph from the possible states with the nodes being the states and the directed edges being the rule names.
     pub fn graph(&self) -> Graph<State, RuleName> {
         self.cache.graph(self.possible_states.clone())
     }
 
-    /// Checks if the uniform distribution is a steady state i.e. if the transition rate matrix is doubly statistical.
     pub fn uniform_distribution_is_steady(&self) -> Result<bool, ErrorKind> {
-        let mut simulation = Simulation::from(
-            self.resources.clone(),
-            self.initial_state.clone(),
-            self.rules.clone(),
-        )?;
+        let mut simulation = Simulation::new(self.initial_state.clone(), self.rules.clone());
         simulation.full_traversal(None)?;
         let uniform_probability = Probability::from(1. / simulation.possible_states.len() as f64);
         let uniform_distribution: ReachableStates = ReachableStates::from(HashMap::from_iter(
