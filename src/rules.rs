@@ -12,60 +12,23 @@ use thiserror::Error;
 
 use crate::prelude::*;
 
-#[derive(PartialEq, Clone, Debug, Default)]
-pub struct Action {
-    parameter: ParameterName,
-    target: EntityName,
-    amount: Amount,
+#[derive(Clone, Debug, PartialEq, Default)]
+pub enum Action {
+    #[default]
+    None,
+    AdjustParameter(EntityName, ParameterName, Amount),
+    SetParameter(EntityName, ParameterName, Amount),
+    AdjustFunction(fn(State) -> HashMap<EntityName, (ParameterName, Amount)>),
+    SetFunction(fn(State) -> HashMap<EntityName, (ParameterName, Amount)>),
+    InsertEntity(EntityName, Entity),
 }
 
-impl Display for Action {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "Action: set {} of {} to {}",
-            self.parameter, self.target, self.amount
-        )
-    }
-}
-
-impl Action {
-    pub fn new() -> Self {
-        Self {
-            parameter: ParameterName::new(),
-            target: EntityName::new(),
-            amount: Amount::new(),
-        }
-    }
-
-    pub fn from(parameter: ParameterName, target: EntityName, amount: Amount) -> Self {
-        Self {
-            parameter,
-            target,
-            amount,
-        }
-    }
-
-    pub fn target(&self) -> &EntityName {
-        &self.target
-    }
-
-    pub fn parameter(&self) -> &ParameterName {
-        &self.parameter
-    }
-
-    pub fn amount(&self) -> Amount {
-        self.amount
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, AsRef, AsMut, Into)]
-pub struct ActionName(String);
-
-impl ActionName {
-    pub fn new() -> Self {
-        Self("".to_string())
-    }
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub enum Condition {
+    #[default]
+    Never,
+    Always,
+    Function(fn(State) -> RuleApplies),
 }
 
 #[derive(
@@ -116,18 +79,12 @@ impl ProbabilityWeight {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Rule {
     description: String,
-    condition: fn(State) -> RuleApplies,
+    condition: Condition,
     weight: ProbabilityWeight,
-    actions: fn(State) -> HashMap<ActionName, Action>,
-}
-
-impl Default for Rule {
-    fn default() -> Self {
-        Self::new()
-    }
+    action: Action,
 }
 
 impl Display for Rule {
@@ -140,25 +97,17 @@ impl Display for Rule {
 }
 
 impl Rule {
-    pub fn new() -> Self {
-        Self {
-            description: "".to_string(),
-            condition: |_| RuleApplies::from(false),
-            weight: ProbabilityWeight::from(0.),
-            actions: |_| HashMap::new(),
-        }
-    }
-    pub fn from(
+    pub fn new(
         description: String,
-        condition: fn(State) -> RuleApplies,
+        condition: Condition,
         probability_weight: ProbabilityWeight,
-        actions: fn(State) -> HashMap<ActionName, Action>,
+        action: Action,
     ) -> Self {
         Self {
             description,
             condition,
             weight: probability_weight,
-            actions,
+            action,
         }
     }
 
@@ -171,13 +120,20 @@ impl Rule {
         if self.weight == ProbabilityWeight(0.) {
             return Ok((RuleApplies(false), None));
         }
-        let base_state_hash = StateHash::from_state(&state);
-        if cache.contains_condition(&rule_name, &base_state_hash)? {
-            Ok((*cache.condition(&rule_name, &base_state_hash)?, None))
-        } else {
-            let rule_applies = (self.condition)(state);
-            let cache = ConditionCacheUpdate::from(rule_name, base_state_hash, rule_applies);
-            Ok((rule_applies, Some(cache)))
+        match self.condition {
+            Condition::Never => Ok((RuleApplies(false), None)),
+            Condition::Always => Ok((RuleApplies(true), None)),
+            Condition::Function(condition) => {
+                let base_state_hash = StateHash::new(&state);
+                if cache.contains_condition(&rule_name, &base_state_hash)? {
+                    Ok((*cache.condition(&rule_name, &base_state_hash)?, None))
+                } else {
+                    let rule_applies = condition(state);
+                    let condition_cache_update =
+                        ConditionCacheUpdate::new(rule_name, base_state_hash, rule_applies);
+                    Ok((rule_applies, Some(condition_cache_update)))
+                }
+            }
         }
     }
 
@@ -198,12 +154,47 @@ impl Rule {
                 None,
             ))
         } else {
-            let actions = (self.actions)(base_state.clone());
-            let new_state = base_state.apply_actions(actions)?;
+            let new_state = match &self.action {
+                Action::None => base_state,
+                Action::AdjustParameter(entity_name, parameter, amount) => {
+                    let mut new_state = base_state;
+                    let entity = new_state.entity_mut(entity_name)?;
+                    let parameter = entity.parameter_mut(parameter)?;
+                    *parameter += *amount;
+                    new_state
+                }
+                Action::SetParameter(entity_name, parameter, amount) => {
+                    let mut new_state = base_state;
+                    let entity = new_state.entity_mut(entity_name)?;
+                    let parameter = entity.parameter_mut(parameter)?;
+                    *parameter = *amount;
+                    new_state
+                }
+                Action::SetFunction(get_mutations) => {
+                    let mut new_state = base_state.clone();
+                    for (target, (parameter, amount)) in get_mutations(base_state) {
+                        new_state.set_parameter(&target, parameter, amount)?;
+                    }
+                    new_state
+                }
+                Action::AdjustFunction(get_mutations) => {
+                    let mut new_state = base_state.clone();
+                    for (target, (parameter, amount)) in get_mutations(base_state) {
+                        new_state.adjust_parameter(&target, parameter, amount)?;
+                    }
+                    new_state
+                }
+                Action::InsertEntity(entity_name, entity) => {
+                    let mut new_state = base_state;
+                    new_state.insert_entity(entity_name.clone(), entity.clone());
+                    new_state
+                }
+            };
 
-            let new_state_hash = StateHash::from_state(&new_state);
-            let cache = ActionCacheUpdate::from(rule_name, base_state_hash, new_state_hash);
-            Ok((new_state, Some(cache)))
+            let new_state_hash = StateHash::new(&new_state);
+            let condition_cache_update =
+                ActionCacheUpdate::new(rule_name, base_state_hash, new_state_hash);
+            Ok((new_state, Some(condition_cache_update)))
         }
     }
 
@@ -215,12 +206,12 @@ impl Rule {
         &self.description
     }
 
-    pub fn condition(&self) -> fn(State) -> RuleApplies {
+    pub fn condition(&self) -> Condition {
         self.condition
     }
 
-    pub fn actions(&self) -> fn(State) -> HashMap<ActionName, Action> {
-        self.actions
+    pub fn action(&self) -> &Action {
+        &self.action
     }
 }
 
@@ -240,12 +231,15 @@ pub enum RuleError {
 pub struct RuleApplies(bool);
 
 impl RuleApplies {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self(false)
+    pub fn new(applies: bool) -> Self {
+        Self(applies)
     }
 
     pub fn is_true(&self) -> bool {
+        self.0
+    }
+
+    pub fn applies(&self) -> bool {
         self.0
     }
 }
@@ -254,9 +248,8 @@ impl RuleApplies {
 pub struct RuleName(String);
 
 impl RuleName {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self("".to_string())
+    pub fn new(name: &str) -> Self {
+        Self(name.to_string())
     }
 }
 
@@ -267,15 +260,15 @@ mod tests {
     #[test]
     fn applies_should_return_empty_cache_update_on_found_cache() {
         let mut cache = Cache::new();
-        let rule = Rule::from(
+        let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            |_| RuleApplies(true),
+            Condition::Always,
             ProbabilityWeight(1.),
-            |_| HashMap::new(),
+            Action::None,
         );
-        let rule_name = RuleName("Test".to_string());
-        let state = State::new();
-        let state_hash = StateHash::from_state(&state);
+        let rule_name = RuleName::new("Test");
+        let state = State::default();
+        let state_hash = StateHash::new(&state);
         cache
             .add_condition(rule_name.clone(), state_hash, RuleApplies(true))
             .unwrap();
@@ -287,21 +280,21 @@ mod tests {
     #[test]
     fn applies_should_return_proper_cache_update_on_missing_cache() {
         let cache = Cache::new();
-        let rule = Rule::from(
+        let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            |_| RuleApplies(true),
+            Condition::Function(|_| RuleApplies(true)),
             ProbabilityWeight(1.),
-            |_| HashMap::new(),
+            Action::None,
         );
-        let rule_name = RuleName("Test".to_string());
-        let state = State::new();
+        let rule_name = RuleName::new("Test");
+        let state = State::default();
         let (rule_applies, cache_update) = rule.applies(&cache, rule_name, state.clone()).unwrap();
         assert_eq!(rule_applies, RuleApplies(true));
         assert_eq!(
             cache_update,
-            Some(ConditionCacheUpdate::from(
-                RuleName("Test".to_string()),
-                StateHash::from_state(&state),
+            Some(ConditionCacheUpdate::new(
+                RuleName::new("Test"),
+                StateHash::new(&state),
                 RuleApplies(true),
             ))
         );
@@ -310,15 +303,15 @@ mod tests {
     #[test]
     fn apply_should_return_empty_cache_update_on_found_cache() {
         let mut cache = Cache::new();
-        let rule = Rule::from(
+        let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            |_| RuleApplies(true),
+            Condition::Always,
             ProbabilityWeight(1.),
-            |_| HashMap::new(),
+            Action::None,
         );
-        let rule_name = RuleName("Test".to_string());
-        let state = State::new();
-        let state_hash = StateHash::from_state(&state);
+        let rule_name = RuleName::new("Test");
+        let state = State::default();
+        let state_hash = StateHash::new(&state);
         let mut possible_states = PossibleStates::new();
         possible_states
             .append_state(state_hash, state.clone())
@@ -342,15 +335,15 @@ mod tests {
     #[test]
     fn apply_should_return_proper_cache_update_on_missing_cache() {
         let cache = Cache::new();
-        let rule = Rule::from(
+        let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            |_| RuleApplies(true),
+            Condition::Always,
             ProbabilityWeight(1.),
-            |_| HashMap::new(),
+            Action::None,
         );
-        let rule_name = RuleName("Test".to_string());
-        let state = State::new();
-        let state_hash = StateHash::from_state(&state);
+        let rule_name = RuleName::new("Test");
+        let state = State::default();
+        let state_hash = StateHash::new(&state);
         let possible_states = PossibleStates::new();
         let (new_state, cache_update) = rule
             .apply(
@@ -364,10 +357,10 @@ mod tests {
         assert_eq!(new_state, state);
         assert_eq!(
             cache_update,
-            Some(ActionCacheUpdate::from(
-                RuleName("Test".to_string()),
-                StateHash::from_state(&state),
-                StateHash::from_state(&state),
+            Some(ActionCacheUpdate::new(
+                RuleName::new("Test"),
+                StateHash::new(&state),
+                StateHash::new(&state),
             ))
         );
     }

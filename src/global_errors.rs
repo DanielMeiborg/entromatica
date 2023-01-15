@@ -26,9 +26,6 @@ pub enum ErrorKind {
     #[error("Internal error: {0:#?}")]
     InternalError(#[from] InternalError),
 
-    #[error("ParameterError: {0:#?}")]
-    ParameterError(#[from] ParameterError),
-
     #[error("PossibleStatesError: {0:#?}")]
     PossibleStatesError(#[from] PossibleStatesError),
 
