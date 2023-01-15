@@ -44,7 +44,6 @@ impl PartialEq for Amount {
 
 impl From<f64> for Amount {
     fn from(amount: f64) -> Self {
-        debug_assert!(amount >= 0.);
         Self(amount)
     }
 }
