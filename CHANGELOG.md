@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/DanielMeiborg/entromatica/compare/v0.18.0...v0.18.1) (2023-01-16)
+
+
+### Bug Fixes
+
+* Condition::{Never, Always} does not create cache updates ([014f075](https://github.com/DanielMeiborg/entromatica/commit/014f075ecf98b26125f2322f734ec069df598216))
+
 ## [0.18.0](https://github.com/DanielMeiborg/entromatica/compare/v0.17.2...v0.18.0) (2023-01-16)
 
 
