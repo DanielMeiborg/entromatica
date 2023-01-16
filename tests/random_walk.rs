@@ -89,12 +89,11 @@ fn random_walk() {
     println!("{}", &simulation);
     assert_eq!(simulation.possible_states().clone(), {
         let mut simulation_clone = setup();
-        simulation_clone
-            .full_traversal(Some(Time::from(100)), true)
-            .unwrap();
+        simulation_clone.full_traversal(Some(100), true).unwrap();
         dbg!(&simulation_clone);
         simulation_clone.possible_states().clone()
     });
+    dbg!(&simulation.history());
     assert_eq!(simulation.reachable_states().len(), MAX_AMOUNT as usize + 1);
     assert_eq!(simulation.entropy(), Entropy::from(2.3009662938553714));
     let expected_reachable_states = {
@@ -114,6 +113,9 @@ fn random_walk() {
         expected_reachable_states
     };
     assert_eq!(simulation.reachable_states(), &expected_reachable_states);
+    assert!(simulation
+        .uniform_distribution_is_steady(Some(100))
+        .unwrap(),);
     simulation
         .apply_intervention(&HashMap::from([(
             RuleName::new("Go to 0"),
@@ -133,7 +135,29 @@ fn random_walk() {
     assert_eq!(simulation.reachable_states().len(), 1);
     assert_eq!(simulation.entropy(), Entropy::from(0.));
 
-    let graph = simulation.graph(Some(Time::from(100))).unwrap();
+    let graph = simulation.graph(Some(100)).unwrap();
     assert_eq!(graph.edge_count(), 15);
     assert_eq!(graph.node_count(), 5);
+    assert_eq!(
+        simulation
+            .history()
+            .steps()
+            .iter()
+            .map(|step| step.reachable_states().entropy().into())
+            .collect::<Vec<f64>>(),
+        vec![
+            0.,
+            1.,
+            1.5,
+            1.811278124459133,
+            2.0306390622295662,
+            2.135692411043098,
+            2.2039336144561052,
+            2.2455642866016,
+            2.272523933965724,
+            2.289757715995956,
+            2.3009662938553714,
+            0.,
+        ]
+    );
 }

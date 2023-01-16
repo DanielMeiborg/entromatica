@@ -5,31 +5,69 @@ use petgraph::Graph;
 
 use crate::prelude::*;
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Step {
+    reachable_states: ReachableStates,
+    applied_rules: HashMap<RuleName, Rule>,
+}
+
+impl Step {
+    pub fn new(reachable_states: ReachableStates, applied_rules: HashMap<RuleName, Rule>) -> Step {
+        Step {
+            reachable_states,
+            applied_rules,
+        }
+    }
+    pub fn reachable_states(&self) -> &ReachableStates {
+        &self.reachable_states
+    }
+    pub fn applied_rules(&self) -> &HashMap<RuleName, Rule> {
+        &self.applied_rules
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct History {
+    steps: Vec<Step>,
+}
+
+impl History {
+    pub fn new(reachable_states: ReachableStates) -> History {
+        History {
+            steps: vec![Step::new(reachable_states, HashMap::new())],
+        }
+    }
+    pub fn steps(&self) -> &Vec<Step> {
+        &self.steps
+    }
+    pub fn time(&self, time: usize) -> Option<&Step> {
+        self.steps.get(time)
+    }
+    pub fn append(&mut self, step: Step) {
+        self.steps.push(step);
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Simulation {
-    initial_state: State,
-    possible_states: PossibleStates,
-    reachable_states: ReachableStates,
+    history: History,
     rules: HashMap<RuleName, Rule>,
-    time: Time,
-    entropy: Entropy,
+    possible_states: PossibleStates,
     cache: Cache,
 }
 
 impl Display for Simulation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Simulation:")?;
-        writeln!(f, "  Time: {}", self.time)?;
-        writeln!(f, "  Entropy: {}", self.entropy)?;
+        writeln!(f, "  Time: {}", self.time())?;
+        writeln!(f, "  Entropy: {}", self.entropy())?;
         writeln!(f, "  Parameters:")?;
-        writeln!(f, "  Initial state:")?;
-        writeln!(f, "{}", self.initial_state)?;
         writeln!(f, "  Possible states:")?;
         for (state_hash, state) in self.possible_states.iter() {
             writeln!(f, "    {state_hash}: {state}")?;
         }
         writeln!(f, "  Reachable states:")?;
-        for (state_hash, probability) in self.reachable_states.iter() {
+        for (state_hash, probability) in self.reachable_states().iter() {
             writeln!(f, "    {state_hash}: {probability}")?;
         }
         writeln!(f, "  Rules:")?;
@@ -43,25 +81,32 @@ impl Display for Simulation {
 impl Simulation {
     pub fn new(initial_state: State, rules: HashMap<RuleName, Rule>) -> Simulation {
         let initial_state_hash = StateHash::new(&initial_state);
-        Simulation {
-            initial_state: initial_state.clone(),
-            possible_states: PossibleStates::from(HashMap::from([(
-                initial_state_hash,
-                initial_state,
-            )])),
-            reachable_states: ReachableStates::from(HashMap::from([(
-                initial_state_hash,
-                Probability::from(1.),
-            )])),
+        Simulation::new_with_reachable_states(
+            PossibleStates::from(HashMap::from([(initial_state_hash, initial_state)])),
+            ReachableStates::from(HashMap::from([(initial_state_hash, Probability::from(1.))])),
             rules,
-            time: Time::from(0),
-            entropy: Entropy::from(0.),
+        )
+    }
+
+    pub fn new_with_reachable_states(
+        possible_states: PossibleStates,
+        reachable_states: ReachableStates,
+        rules: HashMap<RuleName, Rule>,
+    ) -> Simulation {
+        Simulation {
+            possible_states,
+            rules,
+            history: History::new(reachable_states),
             cache: Cache::new(),
         }
     }
 
-    pub fn initial_state(&self) -> &State {
-        &self.initial_state
+    pub fn history(&self) -> &History {
+        &self.history
+    }
+
+    pub fn initial_distribution(&self) -> &ReachableStates {
+        self.history.steps().first().unwrap().reachable_states()
     }
 
     pub fn possible_states(&self) -> &PossibleStates {
@@ -69,26 +114,30 @@ impl Simulation {
     }
 
     pub fn reachable_states(&self) -> &ReachableStates {
-        &self.reachable_states
+        self.history().steps().last().unwrap().reachable_states()
+    }
+
+    pub fn next_step_with_distribution(&mut self, reachable_states: ReachableStates) {
+        self.history
+            .append(Step::new(reachable_states, HashMap::new()));
     }
 
     pub fn rules(&self) -> &HashMap<RuleName, Rule> {
         &self.rules
     }
 
-    pub fn time(&self) -> Time {
-        self.time
+    pub fn time(&self) -> usize {
+        self.history().steps().len() - 1
     }
 
     pub fn entropy(&self) -> Entropy {
-        self.entropy
+        self.reachable_states().entropy()
     }
 
     pub fn next_step(&mut self) -> Result<(), ErrorKind> {
         let rules = self.rules.clone();
-        self.update_reachable_states(&rules)?;
-        self.entropy = self.reachable_states.entropy();
-        self.time.increment();
+        let next_reachable_states = self.next_reachable_states(&rules)?;
+        self.history.append(Step::new(next_reachable_states, rules));
         Ok(())
     }
 
@@ -113,7 +162,7 @@ impl Simulation {
     /// ```
     pub fn full_traversal(
         &mut self,
-        iteration_limit: Option<Time>,
+        iteration_limit: Option<usize>,
         modify_state: bool,
     ) -> Result<(), ErrorKind> {
         if modify_state {
@@ -150,23 +199,26 @@ impl Simulation {
                 }));
             }
         }
-        self.update_reachable_states(rules)?;
-        self.entropy = self.reachable_states.entropy();
-        self.time.increment();
+        let next_reachable_states = self.next_reachable_states(rules)?;
+        self.history
+            .append(Step::new(next_reachable_states, rules.clone()));
         Ok(())
     }
 
-    fn update_reachable_states(
+    fn next_reachable_states(
         &mut self,
         rules: &HashMap<RuleName, Rule>,
-    ) -> Result<(), ErrorKind> {
-        self.reachable_states
-            .apply_rules(&mut self.possible_states, &mut self.cache, rules)
+    ) -> Result<ReachableStates, ErrorKind> {
+        self.reachable_states().clone().apply_rules(
+            &mut self.possible_states,
+            &mut self.cache,
+            rules,
+        )
     }
 
     pub fn graph(
         &mut self,
-        iteration_limit: Option<Time>,
+        iteration_limit: Option<usize>,
     ) -> Result<Graph<StateHash, RuleName>, ErrorKind> {
         self.full_traversal(iteration_limit, false)?;
         self.cache.graph(self.possible_states.clone())
@@ -174,10 +226,10 @@ impl Simulation {
 
     pub fn uniform_distribution_is_steady(
         &mut self,
-        iteration_limit: Option<Time>,
+        iteration_limit: Option<usize>,
     ) -> Result<bool, ErrorKind> {
-        let mut simulation = Simulation::new(self.initial_state.clone(), self.rules.clone());
-        simulation.full_traversal(iteration_limit, false)?;
+        self.full_traversal(iteration_limit, false)?;
+        let simulation = self.clone();
         let uniform_probability = Probability::from(1. / simulation.possible_states.len() as f64);
         let uniform_distribution: ReachableStates = ReachableStates::from(HashMap::from_iter(
             simulation.possible_states.iter().map(|(state_hash, _)| {
@@ -185,11 +237,11 @@ impl Simulation {
                 prob
             }),
         ));
-        let mut uniform_simulation = simulation.clone();
-        uniform_simulation.reachable_states = uniform_distribution;
-        let uniform_entropy = uniform_simulation.reachable_states.entropy();
+        let mut uniform_simulation = simulation;
+        uniform_simulation.next_step_with_distribution(uniform_distribution);
+        let uniform_entropy = uniform_simulation.entropy();
         uniform_simulation.next_step()?;
-        let uniform_entropy_after_step = uniform_simulation.reachable_states.entropy();
+        let uniform_entropy_after_step = uniform_simulation.entropy();
         Ok(uniform_entropy == uniform_entropy_after_step)
     }
 }
