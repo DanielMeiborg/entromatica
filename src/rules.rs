@@ -120,20 +120,18 @@ impl Rule {
         if self.weight == ProbabilityWeight(0.) {
             return Ok((RuleApplies(false), None));
         }
-        match self.condition {
-            Condition::Never => Ok((RuleApplies(false), None)),
-            Condition::Always => Ok((RuleApplies(true), None)),
-            Condition::Function(condition) => {
-                let base_state_hash = StateHash::new(&state);
-                if cache.contains_condition(&rule_name, &base_state_hash)? {
-                    Ok((*cache.condition(&rule_name, &base_state_hash)?, None))
-                } else {
-                    let rule_applies = condition(state);
-                    let condition_cache_update =
-                        ConditionCacheUpdate::new(rule_name, base_state_hash, rule_applies);
-                    Ok((rule_applies, Some(condition_cache_update)))
-                }
-            }
+        let base_state_hash = StateHash::new(&state);
+        if cache.contains_condition(&rule_name, &base_state_hash)? {
+            Ok((*cache.condition(&rule_name, &base_state_hash)?, None))
+        } else {
+            let rule_applies = match self.condition {
+                Condition::Never => RuleApplies(false),
+                Condition::Always => RuleApplies(true),
+                Condition::Function(condition) => condition(state),
+            };
+            let condition_cache_update =
+                ConditionCacheUpdate::new(rule_name, base_state_hash, rule_applies);
+            Ok((rule_applies, Some(condition_cache_update)))
         }
     }
 
@@ -282,7 +280,7 @@ mod tests {
         let cache = Cache::new();
         let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            Condition::Function(|_| RuleApplies(true)),
+            Condition::Always,
             ProbabilityWeight(1.),
             Action::None,
         );
