@@ -168,9 +168,13 @@ impl Simulation {
         self.cache.graph(self.possible_states.clone())
     }
 
-    pub fn uniform_distribution_is_steady(&self) -> Result<bool, ErrorKind> {
+
+    pub fn uniform_distribution_is_steady(
+        &mut self,
+        iteration_limit: Option<Time>,
+    ) -> Result<bool, ErrorKind> {
         let mut simulation = Simulation::new(self.initial_state.clone(), self.rules.clone());
-        simulation.full_traversal(None, false)?;
+        simulation.full_traversal(iteration_limit, false)?;
         let uniform_probability = Probability::from(1. / simulation.possible_states.len() as f64);
         let uniform_distribution: ReachableStates = ReachableStates::from(HashMap::from_iter(
             simulation.possible_states.iter().map(|(state_hash, _)| {
