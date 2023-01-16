@@ -231,7 +231,6 @@ impl State {
                 condition_cache_updates.push(cache);
             }
             if rule_applies.is_true() {
-                new_base_state_probability *= 1. - f64::from(rule.weight());
                 applying_rules_probability_weight_sum += rule.weight();
                 let (new_state, action_cache_update) = rule.apply(
                     cache,
@@ -240,6 +239,9 @@ impl State {
                     base_state_hash,
                     base_state.clone(),
                 )?;
+                if &new_state != self {
+                    new_base_state_probability *= 1. - f64::from(rule.weight());
+                }
                 if let Some(cache) = action_cache_update {
                     action_cache_updates.push(cache);
                 }
@@ -250,7 +252,6 @@ impl State {
         }
 
         let mut new_reachable_states = ReachableStates::new();
-
         if new_base_state_probability > Probability::from(0.) {
             new_reachable_states.append_state(base_state_hash, new_base_state_probability)?;
         }
