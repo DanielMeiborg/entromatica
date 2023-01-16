@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.21.0](https://github.com/DanielMeiborg/entromatica/compare/v0.20.0...v0.21.0) (2023-01-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* history for simulation, reachable states as initial_state, replaced Time with usize, closes #21, #57
+
+### Features
+
+* history for simulation, reachable states as initial_state, replaced Time with usize, closes [#21](https://github.com/DanielMeiborg/entromatica/issues/21), [#57](https://github.com/DanielMeiborg/entromatica/issues/57) ([fcd3dfd](https://github.com/DanielMeiborg/entromatica/commit/fcd3dfd04947554d48471eb0924dad10aab2cec5))
+
 ## [0.20.0](https://github.com/DanielMeiborg/entromatica/compare/v0.19.0...v0.20.0) (2023-01-16)
 
 
