@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/DanielMeiborg/entromatica/compare/v0.21.0...v0.21.1) (2023-01-16)
+
+
+### Features
+
+* Implement Iterator for Simulation, closes [#66](https://github.com/DanielMeiborg/entromatica/issues/66) ([c298d34](https://github.com/DanielMeiborg/entromatica/commit/c298d340458edfc40085b40662ce9fe7795c6984))
+
 ## [0.21.0](https://github.com/DanielMeiborg/entromatica/compare/v0.20.0...v0.21.0) (2023-01-16)
 
 
