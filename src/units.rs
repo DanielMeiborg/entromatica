@@ -52,6 +52,10 @@ impl Amount {
     pub fn new() -> Self {
         Self(0.)
     }
+
+    pub fn to_f64(&self) -> f64 {
+        self.0
+    }
 }
 
 #[derive(
