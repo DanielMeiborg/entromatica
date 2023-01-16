@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.0](https://github.com/DanielMeiborg/entromatica/compare/v0.18.1...v0.19.0) (2023-01-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* uniform_distribution_is_steady has an iteration_limit
+* Add modify_state option to Simulation::full_traversal
+
+### Features
+
+* Add modify_state option to Simulation::full_traversal ([3e1beb7](https://github.com/DanielMeiborg/entromatica/commit/3e1beb72aeac137f018fffe34f92a853b5a681d2))
+* uniform_distribution_is_steady has an iteration_limit ([0121091](https://github.com/DanielMeiborg/entromatica/commit/0121091f90fa0c9d02f62f5c1e193b6bb3d5af1a))
+
 ## [0.18.1](https://github.com/DanielMeiborg/entromatica/compare/v0.18.0...v0.18.1) (2023-01-16)
 
 
