@@ -1,7 +1,6 @@
 # Entromatica
 
 ![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/DanielMeiborg/entromatica/ci.yml?label=CI)
-![GitHub issues](https://img.shields.io/github/issues/DanielMeiborg/entromatica)
 ![Crates.io](https://img.shields.io/crates/l/entromatica)
 ![Crates.io](https://img.shields.io/crates/v/entromatica)
 ![GitHub release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/DanielMeiborg/entromatica?include_prereleases)
