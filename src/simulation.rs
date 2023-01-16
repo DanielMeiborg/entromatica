@@ -78,6 +78,18 @@ impl Display for Simulation {
     }
 }
 
+impl Iterator for Simulation {
+    type Item = Result<Simulation, ErrorKind>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.next_step();
+        match result {
+            Ok(_) => Some(Ok(self.clone())),
+            Err(error) => Some(Err(error)),
+        }
+    }
+}
+
 impl Simulation {
     pub fn new(initial_state: State, rules: HashMap<RuleName, Rule>) -> Simulation {
         let initial_state_hash = StateHash::new(&initial_state);
