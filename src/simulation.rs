@@ -103,27 +103,42 @@ impl Simulation {
     ///
     /// This method will continue to call `next_step()` until all possible states have been visited.
     /// If an `iteration_limit` is provided, the traversal will stop if the time spent exceeds the limit.
+    /// If modify_state is set to false, only the cache and the possible states will be updated,
+    /// but the simulation will otherwise remain at its current state.
     ///
     /// # Errors
     ///
     /// - `ErrorKind::IterationLimitReached` - If the traversal took longer than the provided iteration limit.
     ///   Note that any progress will be  applied to the simulation.
     /// ```
-    pub fn full_traversal(&mut self, iteration_limit: Option<Time>) -> Result<(), ErrorKind> {
-        let mut num_current_possible_states = 0;
-        while num_current_possible_states != self.possible_states().len() {
-            if let Some(iteration_limit) = iteration_limit {
-                if self.time() >= iteration_limit {
-                    return Err(ErrorKind::IterationLimitReached {
-                        time: self.time(),
-                        context: get_backtrace(),
-                    });
+    pub fn full_traversal(
+        &mut self,
+        iteration_limit: Option<Time>,
+        modify_state: bool,
+    ) -> Result<(), ErrorKind> {
+        if modify_state {
+            let mut num_current_possible_states = 0;
+            while num_current_possible_states != self.possible_states().len() {
+                if let Some(iteration_limit) = iteration_limit {
+                    if self.time() >= iteration_limit {
+                        return Err(ErrorKind::IterationLimitReached {
+                            time: self.time(),
+                            context: get_backtrace(),
+                        });
+                    }
                 }
+                num_current_possible_states = self.possible_states().len();
+                self.next_step()?;
             }
-            num_current_possible_states = self.possible_states().len();
-            self.next_step()?;
+            Ok(())
+        } else {
+            let mut simulation_clone = self.clone();
+            simulation_clone.full_traversal(iteration_limit, true)?;
+            self.possible_states
+                .merge(simulation_clone.possible_states())?;
+            self.cache.merge(&simulation_clone.cache)?;
+            Ok(())
         }
-        Ok(())
     }
 
     pub fn apply_intervention(&mut self, rules: &HashMap<RuleName, Rule>) -> Result<(), ErrorKind> {
@@ -155,7 +170,7 @@ impl Simulation {
 
     pub fn uniform_distribution_is_steady(&self) -> Result<bool, ErrorKind> {
         let mut simulation = Simulation::new(self.initial_state.clone(), self.rules.clone());
-        simulation.full_traversal(None)?;
+        simulation.full_traversal(None, false)?;
         let uniform_probability = Probability::from(1. / simulation.possible_states.len() as f64);
         let uniform_distribution: ReachableStates = ReachableStates::from(HashMap::from_iter(
             simulation.possible_states.iter().map(|(state_hash, _)| {
