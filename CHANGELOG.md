@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.18.0](https://github.com/DanielMeiborg/entromatica/compare/v0.17.2...v0.18.0) (2023-01-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* Refactor rules
+* from(...) main constructors are now named new(...)
+* `resource`is now called `parameter` and capacities are removed
+
+### Features
+
+* Convert from(...) to new(...) methods ([2d464e7](https://github.com/DanielMeiborg/entromatica/commit/2d464e7dc39a7a06f87aa4e56187e8a2b0bbc759))
+* Convert resources to parameters without capacity checks ([3842374](https://github.com/DanielMeiborg/entromatica/commit/3842374545e373948847171aa615f91d0c98b3ba))
+* full traversal method to run the simulation until the whole graph has been explored ([688c8f6](https://github.com/DanielMeiborg/entromatica/commit/688c8f668a472fb5762b1bbce98fd90d9b0f9dcc)), closes [#65](https://github.com/DanielMeiborg/entromatica/issues/65)
+* Refactor rules ([1188d32](https://github.com/DanielMeiborg/entromatica/commit/1188d32fbb5d34427b528a17c9b70e5fb8b1ea44))
+
+
+### Bug Fixes
+
+* Simulation::apply_intervention breaks when rule points state to to itself ([0b5a574](https://github.com/DanielMeiborg/entromatica/commit/0b5a5740ede09d8cbc15950451857ea520aee69f))
+
 ## [0.17.2](https://github.com/DanielMeiborg/entromatica/compare/v0.17.1...v0.17.2) (2023-01-12)
 
 
