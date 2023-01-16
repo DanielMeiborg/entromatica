@@ -168,7 +168,6 @@ impl Simulation {
         self.cache.graph(self.possible_states.clone())
     }
 
-
     pub fn uniform_distribution_is_steady(
         &mut self,
         iteration_limit: Option<Time>,
