@@ -86,14 +86,18 @@ fn random_walk() {
     for _ in 0..MAX_TIME {
         simulation.next_step().unwrap();
     }
-    println!("{}", &simulation);
     assert_eq!(simulation.possible_states().clone(), {
         let mut simulation_clone = setup();
         simulation_clone.full_traversal(Some(100), true).unwrap();
-        dbg!(&simulation_clone);
         simulation_clone.possible_states().clone()
     });
-    dbg!(&simulation.history());
+    assert_eq!(simulation.reachable_states().clone(), {
+        let mut simulation_clone = setup();
+        for _ in 0..MAX_TIME {
+            simulation_clone.next().unwrap().unwrap();
+        }
+        simulation_clone.reachable_states().clone()
+    });
     assert_eq!(simulation.reachable_states().len(), MAX_AMOUNT as usize + 1);
     assert_eq!(simulation.entropy(), Entropy::from(2.3009662938553714));
     let expected_reachable_states = {
@@ -131,7 +135,6 @@ fn random_walk() {
             ),
         )]))
         .unwrap();
-    println!("{}", simulation);
     assert_eq!(simulation.reachable_states().len(), 1);
     assert_eq!(simulation.entropy(), Entropy::from(0.));
 
