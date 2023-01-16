@@ -164,7 +164,11 @@ impl Simulation {
             .apply_rules(&mut self.possible_states, &mut self.cache, rules)
     }
 
-    pub fn graph(&self) -> Graph<State, RuleName> {
+    pub fn graph(
+        &mut self,
+        iteration_limit: Option<Time>,
+    ) -> Result<Graph<StateHash, RuleName>, ErrorKind> {
+        self.full_traversal(iteration_limit, false)?;
         self.cache.graph(self.possible_states.clone())
     }
 

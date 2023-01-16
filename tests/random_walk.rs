@@ -132,4 +132,8 @@ fn random_walk() {
     println!("{}", simulation);
     assert_eq!(simulation.reachable_states().len(), 1);
     assert_eq!(simulation.entropy(), Entropy::from(0.));
+
+    let graph = simulation.graph(Some(Time::from(100))).unwrap();
+    assert_eq!(graph.edge_count(), 15);
+    assert_eq!(graph.node_count(), 5);
 }

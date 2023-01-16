@@ -287,24 +287,31 @@ impl Cache {
         )
     }
 
-    pub fn graph(&self, possible_states: PossibleStates) -> Graph<State, RuleName> {
-        let mut graph = Graph::<State, RuleName>::new();
+    pub fn graph(
+        &self,
+        possible_states: PossibleStates,
+    ) -> Result<Graph<StateHash, RuleName>, ErrorKind> {
+        let mut graph = Graph::<StateHash, RuleName>::new();
         let mut nodes: HashMap<StateHash, NodeIndex> = HashMap::new();
-        for (state_hash, state) in possible_states.iter() {
-            let node_index = graph.add_node(state.clone());
+        for (state_hash, _) in possible_states.iter() {
+            let node_index = graph.add_node(*state_hash);
             nodes.insert(*state_hash, node_index);
         }
-        for (state_hash, state_node) in &nodes {
-            for (rule_name, rule_cache) in self.rules.iter() {
-                if rule_cache.condition(state_hash).is_ok() {
-                    if let Ok(new_state_hash) = rule_cache.action(state_hash) {
-                        let new_state_node = nodes.get(new_state_hash).unwrap();
-                        graph.add_edge(*state_node, *new_state_node, rule_name.clone());
-                    }
+        for (base_state_hash, base_state_node) in &nodes {
+            for (rule_name, _) in self.rules.iter() {
+                if self.condition(rule_name, base_state_hash)?.applies() {
+                    let new_state_hash = self.action(rule_name, base_state_hash)?;
+                    let new_state_node = nodes.get(&new_state_hash).ok_or_else(|| {
+                        ErrorKind::PossibleStatesError(PossibleStatesError::StateNotFound {
+                            state_hash: new_state_hash,
+                            context: get_backtrace(),
+                        })
+                    })?;
+                    graph.add_edge(*base_state_node, *new_state_node, rule_name.clone());
                 }
             }
         }
-        graph
+        Ok(graph)
     }
 
     pub fn merge(&mut self, cache: &Self) -> Result<(), CacheError> {
@@ -492,35 +499,5 @@ mod tests {
             cache.action(&rule_name, &base_state_hash).unwrap(),
             new_state_hash
         );
-    }
-
-    #[test]
-    fn cache_get_graph() {
-        let mut cache = Cache::new();
-        let rule_name = RuleName::new("test");
-        let base_state = State::default();
-        let base_state_hash = StateHash::new(&base_state);
-        let new_state = State::new(vec![(
-            EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
-        )]);
-        let new_state_hash = StateHash::new(&new_state);
-        let applies = RuleApplies::from(true);
-        let possible_states = PossibleStates::from(HashMap::from([
-            (base_state_hash, base_state.clone()),
-            (new_state_hash, new_state.clone()),
-        ]));
-        cache
-            .add_condition(rule_name.clone(), base_state_hash, applies)
-            .unwrap();
-        cache
-            .add_action(rule_name, base_state_hash, new_state_hash)
-            .unwrap();
-
-        let graph = cache.graph(possible_states);
-        assert_eq!(graph.node_count(), 2);
-        assert_eq!(graph.edge_count(), 1);
-        assert_eq!(graph.raw_nodes()[0].weight, base_state);
-        assert_eq!(graph.raw_nodes()[1].weight, new_state);
     }
 }
