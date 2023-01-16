@@ -1,4 +1,7 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    ops::{Div, Mul},
+};
 
 use backtrace::Backtrace as trc;
 use derive_more::*;
@@ -148,6 +151,22 @@ impl From<f64> for Probability {
     fn from(probability: f64) -> Self {
         debug_assert!((0. ..=1.).contains(&probability));
         Self(probability)
+    }
+}
+
+impl Mul<Probability> for Probability {
+    type Output = Probability;
+
+    fn mul(self, rhs: Probability) -> Self::Output {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl Div<Probability> for Probability {
+    type Output = Probability;
+
+    fn div(self, rhs: Probability) -> Self::Output {
+        Self(self.0 / rhs.0)
     }
 }
 
