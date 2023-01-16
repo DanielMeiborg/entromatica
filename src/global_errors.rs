@@ -42,7 +42,7 @@ pub enum ErrorKind {
     ReachableStatesError(#[from] ReachableStatesError),
 
     #[error("The simulation has reached the iteration limit of {time} timesteps.")]
-    IterationLimitReached { time: Time, context: trc },
+    IterationLimitReached { time: usize, context: trc },
 }
 
 impl From<CacheError> for ErrorKind {

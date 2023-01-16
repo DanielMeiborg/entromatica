@@ -169,55 +169,6 @@ impl Probability {
     }
 }
 
-#[derive(
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Clone,
-    Copy,
-    Default,
-    Debug,
-    Display,
-    Into,
-    AsRef,
-    AsMut,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-    Sum,
-    AddAssign,
-    SubAssign,
-    MulAssign,
-    DivAssign,
-    RemAssign,
-)]
-pub struct Time(i64);
-
-impl From<i64> for Time {
-    fn from(time: i64) -> Self {
-        debug_assert!(time >= 0);
-        Self(time)
-    }
-}
-
-impl Time {
-    pub fn new() -> Self {
-        Self(0)
-    }
-
-    pub fn increment(&mut self) {
-        self.0 += 1;
-    }
-
-    pub fn increment_by(&mut self, amount: Amount) {
-        self.0 += amount.0 as i64;
-    }
-}
-
 #[non_exhaustive]
 #[derive(Debug, Clone, Error)]
 pub enum UnitsError {

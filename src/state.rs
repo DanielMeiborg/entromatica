@@ -527,11 +527,11 @@ impl ReachableStates {
     }
 
     pub(crate) fn apply_rules(
-        &mut self,
+        &self,
         possible_states: &mut PossibleStates,
         cache: &mut Cache,
         rules: &HashMap<RuleName, Rule>,
-    ) -> Result<(), ErrorKind> {
+    ) -> Result<ReachableStates, ErrorKind> {
         let new_reachable_states_mutex = Mutex::new(ReachableStates::new());
         let possible_states_update_mutex = Mutex::new(PossibleStates::new());
         let cache_update_mutex = Mutex::new(cache.clone());
@@ -585,10 +585,10 @@ impl ReachableStates {
             }
         }
 
-        *self = new_reachable_states_mutex.lock()?.clone();
         possible_states.merge(&possible_states_update_mutex.lock()?.clone())?;
         cache.merge(&cache_update_mutex.lock()?.clone())?;
-        Ok(())
+        let new_reachable_states = new_reachable_states_mutex.lock()?.clone();
+        Ok(new_reachable_states)
     }
 }
 
