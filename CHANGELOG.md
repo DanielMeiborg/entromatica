@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.20.0](https://github.com/DanielMeiborg/entromatica/compare/v0.19.0...v0.20.0) (2023-01-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* Proper error handling for graph()
+
+### Features
+
+* Proper error handling for graph() ([5c0e3ce](https://github.com/DanielMeiborg/entromatica/commit/5c0e3ce848b4a6425f6053bd6984dad46dc93164))
+
 ## [0.19.0](https://github.com/DanielMeiborg/entromatica/compare/v0.18.1...v0.19.0) (2023-01-16)
 
 
