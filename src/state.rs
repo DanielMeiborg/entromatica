@@ -4,10 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SendError;
 use std::sync::Mutex;
 
-#[allow(unused_imports)]
-use hashbrown::{HashMap, HashSet};
-#[allow(unused_imports)]
-use itertools::Itertools;
+use hashbrown::HashMap;
 
 use backtrace::Backtrace as trc;
 use derive_more::*;
@@ -445,6 +442,14 @@ impl ReachableStates {
         Self(HashMap::new())
     }
 
+    pub fn probability(&self, state_hash: &StateHash) -> Probability {
+        if let Some(probability) = self.0.get(state_hash) {
+            *probability
+        } else {
+            Probability::from(0.)
+        }
+    }
+
     pub fn append_state(
         &mut self,
         state_hash: StateHash,
@@ -461,7 +466,9 @@ impl ReachableStates {
                 *probability += state_probability;
             }
             None => {
-                self.0.insert(state_hash, state_probability);
+                if state_probability > Probability::from(0.) {
+                    self.0.insert(state_hash, state_probability);
+                }
             }
         }
         Ok(())
@@ -513,8 +520,7 @@ impl ReachableStates {
 
     pub fn entropy(&self) -> Entropy {
         Entropy::from(
-            self.0
-                .par_iter()
+            self.par_iter()
                 .map(|(_, probability)| {
                     if *probability > Probability::from(0.) {
                         f64::from(*probability) * -f64::from(*probability).log2()
@@ -523,6 +529,18 @@ impl ReachableStates {
                     }
                 })
                 .sum::<f64>(),
+        )
+    }
+
+    pub fn euclidean_norm(&self, base: &ReachableStates) -> Entropy {
+        Entropy::from(
+            self.par_iter()
+                .map(|(state_hash, probability)| {
+                    let base_state_probability = base.probability(state_hash);
+                    (probability.to_f64() - base_state_probability.to_f64()).powi(2)
+                })
+                .sum::<f64>()
+                .sqrt(),
         )
     }
 
@@ -804,5 +822,30 @@ mod tests {
             .append_state(state_hash, probability)
             .unwrap();
         assert_eq!(reachable_states.entropy(), Entropy::from(1.));
+    }
+
+    #[test]
+    fn euclidean_norm() {
+        let mut reachable_states = ReachableStates::new();
+        reachable_states
+            .append_state(StateHash::from(1), Probability::new(0.5))
+            .unwrap();
+        reachable_states
+            .append_state(StateHash::from(2), Probability::new(0.25))
+            .unwrap();
+        reachable_states
+            .append_state(StateHash::from(3), Probability::new(0.25))
+            .unwrap();
+        let mut base_reachable_states = ReachableStates::new();
+        base_reachable_states
+            .append_state(StateHash::from(1), Probability::new(0.5))
+            .unwrap();
+        base_reachable_states
+            .append_state(StateHash::from(2), Probability::new(0.5))
+            .unwrap();
+        assert_eq!(
+            Entropy::new(0.3535533905932738),
+            reachable_states.euclidean_norm(&base_reachable_states)
+        );
     }
 }

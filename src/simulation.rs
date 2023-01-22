@@ -117,6 +117,15 @@ impl Simulation {
         &self.history
     }
 
+    pub fn clone_without_history(&self) -> Simulation {
+        Simulation {
+            history: History::new(self.initial_distribution().clone()),
+            rules: self.rules.clone(),
+            possible_states: self.possible_states.clone(),
+            cache: self.cache.clone(),
+        }
+    }
+
     pub fn initial_distribution(&self) -> &ReachableStates {
         self.history.steps().first().unwrap().reachable_states()
     }

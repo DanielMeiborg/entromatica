@@ -163,4 +163,13 @@ fn random_walk() {
             0.,
         ]
     );
+    assert_eq!(
+        simulation
+            .history()
+            .steps()
+            .iter()
+            .map(|step| step.reachable_states().len())
+            .collect::<Vec<usize>>(),
+        vec![1, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 1]
+    );
 }

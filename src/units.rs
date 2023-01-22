@@ -1,4 +1,7 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    ops::{Div, Mul},
+};
 
 use backtrace::Backtrace as trc;
 use derive_more::*;
@@ -49,8 +52,8 @@ impl From<f64> for Amount {
 }
 
 impl Amount {
-    pub fn new() -> Self {
-        Self(0.)
+    pub fn new(amount: f64) -> Self {
+        Self(amount)
     }
 
     pub fn to_f64(&self) -> f64 {
@@ -102,8 +105,9 @@ impl From<f64> for Entropy {
 }
 
 impl Entropy {
-    pub fn new() -> Self {
-        Self(0.)
+    pub fn new(entropy: f64) -> Self {
+        debug_assert!(entropy >= 0.);
+        Self(entropy)
     }
 }
 
@@ -150,9 +154,26 @@ impl From<f64> for Probability {
     }
 }
 
+impl Mul<Probability> for Probability {
+    type Output = Probability;
+
+    fn mul(self, rhs: Probability) -> Self::Output {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl Div<Probability> for Probability {
+    type Output = Probability;
+
+    fn div(self, rhs: Probability) -> Self::Output {
+        Self(self.0 / rhs.0)
+    }
+}
+
 impl Probability {
-    pub fn new() -> Self {
-        Self(0.)
+    pub fn new(probability: f64) -> Self {
+        debug_assert!((0. ..=1.).contains(&probability));
+        Self(probability)
     }
 
     pub fn from_probability_weight(probability_weight: ProbabilityWeight) -> Self {
