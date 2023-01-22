@@ -4,10 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SendError;
 use std::sync::Mutex;
 
-#[allow(unused_imports)]
-use hashbrown::{HashMap, HashSet};
-#[allow(unused_imports)]
-use itertools::Itertools;
+use hashbrown::HashMap;
 
 use backtrace::Backtrace as trc;
 use derive_more::*;
@@ -445,8 +442,12 @@ impl ReachableStates {
         Self(HashMap::new())
     }
 
-    pub fn state(&self, state_hash: &StateHash) -> Option<&Probability> {
-        self.0.get(state_hash)
+    pub fn probability(&self, state_hash: &StateHash) -> Probability {
+        if let Some(probability) = self.0.get(state_hash) {
+            *probability
+        } else {
+            Probability::from(0.)
+        }
     }
 
     pub fn append_state(
@@ -465,7 +466,9 @@ impl ReachableStates {
                 *probability += state_probability;
             }
             None => {
-                self.0.insert(state_hash, state_probability);
+                if state_probability > Probability::from(0.) {
+                    self.0.insert(state_hash, state_probability);
+                }
             }
         }
         Ok(())
@@ -533,8 +536,7 @@ impl ReachableStates {
         Entropy::from(
             self.par_iter()
                 .map(|(state_hash, probability)| {
-                    let base_state_probability =
-                        *base.state(state_hash).unwrap_or(&Probability::new(0.));
+                    let base_state_probability = base.probability(state_hash);
                     (probability.to_f64() - base_state_probability.to_f64()).powi(2)
                 })
                 .sum::<f64>()
@@ -823,7 +825,7 @@ mod tests {
     }
 
     #[test]
-    fn relative_entropy() {
+    fn euclidean_norm() {
         let mut reachable_states = ReachableStates::new();
         reachable_states
             .append_state(StateHash::from(1), Probability::new(0.5))
