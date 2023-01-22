@@ -1,13 +1,10 @@
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
-#[allow(unused_imports)]
-use hashbrown::{HashMap, HashSet};
-#[allow(unused_imports)]
-use itertools::Itertools;
-
 use backtrace::Backtrace as trc;
 use derive_more::*;
+use hashbrown::HashMap;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::prelude::*;
@@ -52,6 +49,8 @@ pub enum Condition {
     MulAssign,
     DivAssign,
     RemAssign,
+    Serialize,
+    Deserialize,
 )]
 pub struct ProbabilityWeight(f64);
 
@@ -224,7 +223,21 @@ pub enum RuleError {
 }
 
 #[derive(
-    Copy, Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut, Not,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Debug,
+    Display,
+    Default,
+    From,
+    Into,
+    AsRef,
+    AsMut,
+    Not,
+    Serialize,
+    Deserialize,
 )]
 pub struct RuleApplies(bool);
 
@@ -242,7 +255,21 @@ impl RuleApplies {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, AsRef, AsMut, Into)]
+#[derive(
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Debug,
+    Display,
+    Default,
+    From,
+    AsRef,
+    AsMut,
+    Into,
+    Serialize,
+    Deserialize,
+)]
 pub struct RuleName(String);
 
 impl RuleName {

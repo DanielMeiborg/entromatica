@@ -1,9 +1,8 @@
 use std::fmt::Display;
 
+use crate::prelude::*;
 use hashbrown::HashMap;
 use petgraph::Graph;
-
-use crate::prelude::*;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Step {
