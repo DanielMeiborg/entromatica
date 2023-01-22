@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.22.0](https://github.com/DanielMeiborg/entromatica/compare/v0.21.1...v0.22.0) (2023-01-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* new() constructors for units now take a value instead of using 0.
+
+### Features
+
+* Add euclidean_norm to ReachableStates, closes [#30](https://github.com/DanielMeiborg/entromatica/issues/30) ([dcbb2ce](https://github.com/DanielMeiborg/entromatica/commit/dcbb2ce5f2c03e4a9ac4e6c69669d9cd7dbc8ee4))
+* new() constructors for units now take a value instead of using 0. ([a67e463](https://github.com/DanielMeiborg/entromatica/commit/a67e4635b9136b8588a3dd901955b63d9a4efaeb))
+* ReachableStates::probability ([2f44d0b](https://github.com/DanielMeiborg/entromatica/commit/2f44d0b832e1e82e1f90adf88e35c2fb742976ce))
+* Simulation::clone_without_history ([fafa3ed](https://github.com/DanielMeiborg/entromatica/commit/fafa3ed471314906eed737f37886480f89099f5e))
+
 ## [0.21.1](https://github.com/DanielMeiborg/entromatica/compare/v0.21.0...v0.21.1) (2023-01-16)
 
 
