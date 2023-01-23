@@ -137,7 +137,7 @@ pub(self) enum RuleCacheError {
 #[error(transparent)]
 pub(crate) struct InternalCacheError(#[from] RuleCacheError);
 
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct Cache {
     rules: HashMap<RuleName, RuleCache>,
 }
