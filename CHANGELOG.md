@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.1](https://github.com/DanielMeiborg/entromatica/compare/v0.22.0...v0.22.1) (2023-01-23)
+
+
+### Features
+
+* add serde support to everything but rules and simulation ([9dc0d36](https://github.com/DanielMeiborg/entromatica/commit/9dc0d36b74aaad8ff5b7b13dc766c49450e459aa))
+* SerializableSimulation, closes [#38](https://github.com/DanielMeiborg/entromatica/issues/38) ([c70c765](https://github.com/DanielMeiborg/entromatica/commit/c70c7652596663e315b6cda2404547d3a8d09f01))
+
 ## [0.22.0](https://github.com/DanielMeiborg/entromatica/compare/v0.21.1...v0.22.0) (2023-01-22)
 
 
