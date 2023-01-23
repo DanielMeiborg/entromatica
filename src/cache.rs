@@ -1,19 +1,16 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-#[allow(unused_imports)]
-use hashbrown::{HashMap, HashSet};
-#[allow(unused_imports)]
-use itertools::Itertools;
-
 use backtrace::Backtrace as trc;
+use hashbrown::HashMap;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::prelude::*;
 
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub(self) struct RuleCache {
     condition: HashMap<StateHash, RuleApplies>,
     actions: HashMap<StateHash, StateHash>,
@@ -140,7 +137,7 @@ pub(self) enum RuleCacheError {
 #[error(transparent)]
 pub(crate) struct InternalCacheError(#[from] RuleCacheError);
 
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct Cache {
     rules: HashMap<RuleName, RuleCache>,
 }
@@ -353,7 +350,7 @@ impl From<RuleCacheError> for CacheError {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct ConditionCacheUpdate {
     pub(self) rule_name: RuleName,
     pub(self) base_state_hash: StateHash,
@@ -381,7 +378,7 @@ impl ConditionCacheUpdate {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct ActionCacheUpdate {
     pub(self) rule_name: RuleName,
     pub(self) base_state_hash: StateHash,

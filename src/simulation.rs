@@ -1,9 +1,10 @@
 use std::fmt::Display;
 
-use hashbrown::HashMap;
-use petgraph::Graph;
-
 use crate::prelude::*;
+
+use hashbrown::{HashMap, HashSet};
+use petgraph::Graph;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Step {
@@ -48,7 +49,49 @@ impl History {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+struct SerializableStep {
+    reachable_states: ReachableStates,
+    applied_rules: HashSet<RuleName>,
+}
+
+impl SerializableStep {
+    pub fn to_step(&self, rules: &HashMap<RuleName, Rule>) -> Result<Step, RuleError> {
+        Ok(Step {
+            reachable_states: self.reachable_states.clone(),
+            applied_rules: self
+                .applied_rules
+                .iter()
+                .map(|rule_name| {
+                    let rule = rules.get(rule_name);
+                    if let Some(rule) = rule {
+                        Ok((rule_name.clone(), rule.clone()))
+                    } else {
+                        Err(RuleError::RuleNotFound {
+                            rule_name: rule_name.clone(),
+                            context: get_backtrace(),
+                        })
+                    }
+                })
+                .collect::<Result<HashMap<RuleName, Rule>, RuleError>>()?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+struct SerializableHistory {
+    steps: Vec<SerializableStep>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SerializableSimulation {
+    history: SerializableHistory,
+    rules: HashSet<RuleName>,
+    possible_states: PossibleStates,
+    cache: Cache,
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Simulation {
     history: History,
     rules: HashMap<RuleName, Rule>,
@@ -115,6 +158,59 @@ impl Simulation {
 
     pub fn history(&self) -> &History {
         &self.history
+    }
+
+    pub fn to_serializable(&self) -> SerializableSimulation {
+        let history = SerializableHistory {
+            steps: self
+                .history
+                .steps()
+                .iter()
+                .map(|step| SerializableStep {
+                    reachable_states: step.reachable_states().clone(),
+                    applied_rules: step.applied_rules().keys().cloned().collect(),
+                })
+                .collect(),
+        };
+        SerializableSimulation {
+            history,
+            rules: self.rules.keys().cloned().collect(),
+            possible_states: self.possible_states.clone(),
+            cache: self.cache.clone(),
+        }
+    }
+
+    pub fn from_serializable(
+        serializable_simulation: SerializableSimulation,
+        rules: HashMap<RuleName, Rule>,
+    ) -> Result<Simulation, ErrorKind> {
+        let steps: Vec<Step> = serializable_simulation
+            .history
+            .steps
+            .iter()
+            .map(|step| step.to_step(&rules))
+            .collect::<Result<Vec<Step>, RuleError>>()?;
+        let history = History { steps };
+        Ok(Simulation {
+            history,
+            rules: serializable_simulation
+                .rules
+                .iter()
+                .map(|rule_name| {
+                    let rule = rules.get(rule_name);
+                    if let Some(rule) = rule {
+                        Ok((rule_name.clone(), rule.clone()))
+                    } else {
+                        Err(RuleError::RuleNotFound {
+                            rule_name: rule_name.clone(),
+                            context: get_backtrace(),
+                        })
+                    }
+                })
+                .collect::<Result<HashMap<RuleName, Rule>, RuleError>>()?,
+            possible_states: serializable_simulation.possible_states,
+            cache: serializable_simulation.cache,
+        })
     }
 
     pub fn clone_without_history(&self) -> Simulation {

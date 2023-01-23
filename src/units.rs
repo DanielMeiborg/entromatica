@@ -5,6 +5,7 @@ use std::{
 
 use backtrace::Backtrace as trc;
 use derive_more::*;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::prelude::*;
@@ -30,6 +31,8 @@ use crate::prelude::*;
     MulAssign,
     DivAssign,
     RemAssign,
+    Serialize,
+    Deserialize,
 )]
 pub struct Amount(f64);
 
@@ -82,6 +85,8 @@ impl Amount {
     MulAssign,
     DivAssign,
     RemAssign,
+    Serialize,
+    Deserialize,
 )]
 pub struct Entropy(f64);
 
@@ -132,6 +137,8 @@ impl Entropy {
     MulAssign,
     DivAssign,
     RemAssign,
+    Serialize,
+    Deserialize,
 )]
 pub struct Probability(f64);
 

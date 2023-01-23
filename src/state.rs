@@ -4,16 +4,30 @@ use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SendError;
 use std::sync::Mutex;
 
-use hashbrown::HashMap;
-
 use backtrace::Backtrace as trc;
 use derive_more::*;
+use hashbrown::HashMap;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::prelude::*;
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, AsRef, AsMut, Into)]
+#[derive(
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Debug,
+    Display,
+    Default,
+    From,
+    AsRef,
+    AsMut,
+    Into,
+    Serialize,
+    Deserialize,
+)]
 pub struct ParameterName(String);
 
 impl ParameterName {
@@ -22,7 +36,7 @@ impl ParameterName {
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub struct Entity {
     parameters: HashMap<ParameterName, Amount>,
 }
@@ -84,7 +98,21 @@ pub enum EntityError {
     },
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut)]
+#[derive(
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Debug,
+    Display,
+    Default,
+    From,
+    Into,
+    AsRef,
+    AsMut,
+    Serialize,
+    Deserialize,
+)]
 pub struct EntityName(pub String);
 
 impl EntityName {
@@ -93,7 +121,7 @@ impl EntityName {
     }
 }
 
-#[derive(Clone, Debug, Default, From, Into)]
+#[derive(Clone, Debug, Default, From, Into, Serialize, Deserialize)]
 pub struct State {
     entities: HashMap<EntityName, Entity>,
 }
@@ -320,7 +348,22 @@ pub enum StateError {
     EntityError(#[from] EntityError),
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Display, Default, From, Into, AsRef, AsMut)]
+#[derive(
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Debug,
+    Display,
+    Default,
+    From,
+    Into,
+    AsRef,
+    AsMut,
+    Serialize,
+    Deserialize,
+)]
 pub struct StateHash(u64);
 
 impl StateHash {
@@ -331,7 +374,9 @@ impl StateHash {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Default, From, Into, AsRef, AsMut, Index)]
+#[derive(
+    Clone, PartialEq, Eq, Debug, Default, From, Into, AsRef, AsMut, Index, Serialize, Deserialize,
+)]
 pub struct PossibleStates(HashMap<StateHash, State>);
 
 impl Display for PossibleStates {
@@ -425,7 +470,9 @@ pub enum PossibleStatesError {
     },
 }
 
-#[derive(Clone, PartialEq, Debug, Default, From, Into, AsRef, AsMut, Index)]
+#[derive(
+    Clone, PartialEq, Debug, Default, From, Into, AsRef, AsMut, Index, Serialize, Deserialize,
+)]
 pub struct ReachableStates(HashMap<StateHash, Probability>);
 
 impl Display for ReachableStates {
