@@ -1,13 +1,13 @@
 use entromatica::prelude::*;
 
 use hashbrown::HashMap;
-const MAX_AMOUNT: f64 = 4.;
+const MAX_AMOUNT: i32 = 4;
 const MAX_TIME: usize = 10;
 
-fn setup() -> Simulation {
+fn setup() -> Simulation<i32> {
     let initial_state = State::new(vec![(
         EntityName::new("main"),
-        Entity::new(vec![(ParameterName::new("point"), Amount::from(0.))]),
+        Entity::new(vec![(ParameterName::new("point"), Parameter::new(0))]),
     )]);
 
     let rules = HashMap::from([
@@ -17,26 +17,26 @@ fn setup() -> Simulation {
                 "".to_string(),
                 Condition::Always,
                 ProbabilityWeight::from(1.),
-                Action::SetFunction(|state| {
-                    let current_point = state
+                Action::SetFunction(|state: State<i32>| {
+                    let current_point = *state
                         .entity(&EntityName::new("main"))
                         .unwrap()
                         .parameter(&ParameterName::new("point"))
                         .unwrap()
                         .to_owned()
-                        .to_f64();
+                        .value();
                     if current_point < MAX_AMOUNT {
                         HashMap::from([(
                             EntityName::new("main"),
                             (
                                 ParameterName::new("point"),
-                                Amount::from(current_point + 1.),
+                                Parameter::new(current_point + 1),
                             ),
                         )])
                     } else {
                         HashMap::from([(
                             EntityName::new("main"),
-                            (ParameterName::new("point"), Amount::from(0.)),
+                            (ParameterName::new("point"), Parameter::new(0)),
                         )])
                     }
                 }),
@@ -49,24 +49,24 @@ fn setup() -> Simulation {
                 Condition::Always,
                 ProbabilityWeight::from(1.),
                 Action::SetFunction(|state| {
-                    let current_point = state
+                    let current_point = *state
                         .entity(&EntityName::new("main"))
                         .unwrap()
                         .parameter(&ParameterName::new("point"))
                         .unwrap()
                         .to_owned()
-                        .to_f64();
-                    if current_point == 0. {
+                        .value();
+                    if current_point == 0 {
                         HashMap::from([(
                             EntityName::new("main"),
-                            (ParameterName::new("point"), Amount::from(MAX_AMOUNT)),
+                            (ParameterName::new("point"), Parameter::new(MAX_AMOUNT)),
                         )])
                     } else {
                         HashMap::from([(
                             EntityName::new("main"),
                             (
                                 ParameterName::new("point"),
-                                Amount::from(current_point - 1.),
+                                Parameter::new(current_point - 1),
                             ),
                         )])
                     }
@@ -103,11 +103,11 @@ fn random_walk() {
     let expected_reachable_states = {
         let mut expected_reachable_states = ReachableStates::new();
         let expected_reachable_states_vec: Vec<(u64, f64)> = vec![
-            (16318861240434570188, 0.21484375),
-            (8001857008351451444, 0.21484375),
-            (10921680398206464020, 0.248046875),
-            (7911799719936081424, 0.1611328125),
-            (3732191206693521782, 0.1611328125),
+            (1983155860954835072, 0.21484375),
+            (4317319517181003110, 0.21484375),
+            (6119077233511131479, 0.248046875),
+            (15201673400525796111, 0.1611328125),
+            (17580441199265992620, 0.1611328125),
         ];
         for (state_hash, probability) in expected_reachable_states_vec {
             expected_reachable_states
@@ -130,7 +130,7 @@ fn random_walk() {
                 Action::SetParameter(
                     EntityName::new("main"),
                     ParameterName::new("point"),
-                    Amount::from(0.),
+                    Parameter::new(0),
                 ),
             ),
         )]))
@@ -183,28 +183,28 @@ fn serialization() {
     let serialized_reachable_states = serde_json::to_string(simulation.reachable_states()).unwrap();
     assert_eq!(
         serialized_reachable_states,
-        r#"{"10921680398206464020":0.248046875,"7911799719936081424":0.1611328125,"16318861240434570188":0.21484375,"3732191206693521782":0.1611328125,"8001857008351451444":0.21484375}"#
+        r#"{"6119077233511131479":0.248046875,"15201673400525796111":0.1611328125,"1983155860954835072":0.21484375,"17580441199265992620":0.1611328125,"4317319517181003110":0.21484375}"#
     );
 
     let serialized_possible_states = serde_json::to_string(simulation.possible_states()).unwrap();
     assert_eq!(
         serialized_possible_states,
-        r#"{"10921680398206464020":{"entities":{"main":{"parameters":{"point":0.0}}}},"7911799719936081424":{"entities":{"main":{"parameters":{"point":4.0}}}},"16318861240434570188":{"entities":{"main":{"parameters":{"point":2.0}}}},"3732191206693521782":{"entities":{"main":{"parameters":{"point":1.0}}}},"8001857008351451444":{"entities":{"main":{"parameters":{"point":3.0}}}}}"#
+        r#"{"6119077233511131479":{"entities":{"main":{"parameters":{"point":{"value":0}}}}},"15201673400525796111":{"entities":{"main":{"parameters":{"point":{"value":1}}}}},"1983155860954835072":{"entities":{"main":{"parameters":{"point":{"value":2}}}}},"17580441199265992620":{"entities":{"main":{"parameters":{"point":{"value":4}}}}},"4317319517181003110":{"entities":{"main":{"parameters":{"point":{"value":3}}}}}}"#
     );
     let serializable_simulation = simulation.to_serializable();
     let simulation_string = serde_json::to_string(&serializable_simulation).unwrap();
     assert_eq!(
         simulation_string,
-        r#"{"history":{"steps":[{"reachable_states":{"10921680398206464020":1.0},"applied_rules":[]},{"reachable_states":{"7911799719936081424":0.5,"3732191206693521782":0.5},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"10921680398206464020":0.5,"16318861240434570188":0.25,"8001857008351451444":0.25},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"7911799719936081424":0.375,"16318861240434570188":0.125,"8001857008351451444":0.125,"3732191206693521782":0.375},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"10921680398206464020":0.375,"7911799719936081424":0.0625,"16318861240434570188":0.25,"3732191206693521782":0.0625,"8001857008351451444":0.25},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"10921680398206464020":0.0625,"7911799719936081424":0.3125,"16318861240434570188":0.15625,"3732191206693521782":0.3125,"8001857008351451444":0.15625},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"10921680398206464020":0.3125,"7911799719936081424":0.109375,"16318861240434570188":0.234375,"3732191206693521782":0.109375,"8001857008351451444":0.234375},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"10921680398206464020":0.109375,"7911799719936081424":0.2734375,"16318861240434570188":0.171875,"3732191206693521782":0.2734375,"8001857008351451444":0.171875},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"10921680398206464020":0.2734375,"7911799719936081424":0.140625,"16318861240434570188":0.22265625,"3732191206693521782":0.140625,"8001857008351451444":0.22265625},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"10921680398206464020":0.140625,"7911799719936081424":0.248046875,"16318861240434570188":0.181640625,"3732191206693521782":0.248046875,"8001857008351451444":0.181640625},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"10921680398206464020":0.248046875,"7911799719936081424":0.1611328125,"16318861240434570188":0.21484375,"3732191206693521782":0.1611328125,"8001857008351451444":0.21484375},"applied_rules":["walk forward","walk back"]}]},"rules":["walk forward","walk back"],"possible_states":{"10921680398206464020":{"entities":{"main":{"parameters":{"point":0.0}}}},"7911799719936081424":{"entities":{"main":{"parameters":{"point":4.0}}}},"16318861240434570188":{"entities":{"main":{"parameters":{"point":2.0}}}},"3732191206693521782":{"entities":{"main":{"parameters":{"point":1.0}}}},"8001857008351451444":{"entities":{"main":{"parameters":{"point":3.0}}}}},"cache":{"rules":{"walk forward":{"condition":{"10921680398206464020":true,"7911799719936081424":true,"16318861240434570188":true,"3732191206693521782":true,"8001857008351451444":true},"actions":{"10921680398206464020":3732191206693521782,"7911799719936081424":10921680398206464020,"16318861240434570188":8001857008351451444,"3732191206693521782":16318861240434570188,"8001857008351451444":7911799719936081424}},"walk back":{"condition":{"10921680398206464020":true,"7911799719936081424":true,"16318861240434570188":true,"3732191206693521782":true,"8001857008351451444":true},"actions":{"10921680398206464020":7911799719936081424,"7911799719936081424":8001857008351451444,"16318861240434570188":3732191206693521782,"3732191206693521782":10921680398206464020,"8001857008351451444":16318861240434570188}}}}}"#
+        r#"{"history":{"steps":[{"reachable_states":{"6119077233511131479":1.0},"applied_rules":[]},{"reachable_states":{"17580441199265992620":0.5,"15201673400525796111":0.5},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"1983155860954835072":0.25,"6119077233511131479":0.5,"4317319517181003110":0.25},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"4317319517181003110":0.125,"15201673400525796111":0.375,"17580441199265992620":0.375,"1983155860954835072":0.125},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"6119077233511131479":0.375,"4317319517181003110":0.25,"1983155860954835072":0.25,"17580441199265992620":0.0625,"15201673400525796111":0.0625},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"6119077233511131479":0.0625,"15201673400525796111":0.3125,"1983155860954835072":0.15625,"17580441199265992620":0.3125,"4317319517181003110":0.15625},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"6119077233511131479":0.3125,"15201673400525796111":0.109375,"1983155860954835072":0.234375,"17580441199265992620":0.109375,"4317319517181003110":0.234375},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"6119077233511131479":0.109375,"15201673400525796111":0.2734375,"1983155860954835072":0.171875,"17580441199265992620":0.2734375,"4317319517181003110":0.171875},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"6119077233511131479":0.2734375,"15201673400525796111":0.140625,"1983155860954835072":0.22265625,"17580441199265992620":0.140625,"4317319517181003110":0.22265625},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"6119077233511131479":0.140625,"15201673400525796111":0.248046875,"1983155860954835072":0.181640625,"17580441199265992620":0.248046875,"4317319517181003110":0.181640625},"applied_rules":["walk forward","walk back"]},{"reachable_states":{"6119077233511131479":0.248046875,"15201673400525796111":0.1611328125,"1983155860954835072":0.21484375,"17580441199265992620":0.1611328125,"4317319517181003110":0.21484375},"applied_rules":["walk forward","walk back"]}]},"rules":["walk forward","walk back"],"possible_states":{"6119077233511131479":{"entities":{"main":{"parameters":{"point":{"value":0}}}}},"15201673400525796111":{"entities":{"main":{"parameters":{"point":{"value":1}}}}},"1983155860954835072":{"entities":{"main":{"parameters":{"point":{"value":2}}}}},"17580441199265992620":{"entities":{"main":{"parameters":{"point":{"value":4}}}}},"4317319517181003110":{"entities":{"main":{"parameters":{"point":{"value":3}}}}}},"cache":{"rules":{"walk forward":{"condition":{"6119077233511131479":true,"15201673400525796111":true,"1983155860954835072":true,"17580441199265992620":true,"4317319517181003110":true},"actions":{"6119077233511131479":15201673400525796111,"15201673400525796111":1983155860954835072,"1983155860954835072":4317319517181003110,"17580441199265992620":6119077233511131479,"4317319517181003110":17580441199265992620}},"walk back":{"condition":{"6119077233511131479":true,"15201673400525796111":true,"1983155860954835072":true,"17580441199265992620":true,"4317319517181003110":true},"actions":{"6119077233511131479":17580441199265992620,"15201673400525796111":6119077233511131479,"1983155860954835072":15201673400525796111,"17580441199265992620":4317319517181003110,"4317319517181003110":1983155860954835072}}}}}"#
     );
     assert_eq!(
-        serde_json::from_value::<SerializableSimulation>(
+        serde_json::from_value::<SerializableSimulation<i32>>(
             serde_json::to_value(&serializable_simulation).unwrap()
         )
         .unwrap(),
         serializable_simulation
     );
-    let reconstructed_simulation: Simulation =
+    let reconstructed_simulation: Simulation<i32> =
         Simulation::from_serializable(serializable_simulation, simulation.rules().clone()).unwrap();
     assert_eq!(reconstructed_simulation, simulation);
 }

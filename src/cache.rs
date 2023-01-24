@@ -1,5 +1,6 @@
-use std::fmt::Display;
 use std::fmt::Formatter;
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
 
 use backtrace::Backtrace as trc;
 use hashbrown::HashMap;
@@ -25,7 +26,7 @@ impl Display for RuleCache {
                     Ok(new_state_hash) => {
                         writeln!(f, "Rule applies for {base_state_hash} -> {new_state_hash}")?
                     }
-                    Err(error) => return error.fmt(f),
+                    Err(error) => return std::fmt::Debug::fmt(&error, f),
                 };
             } else {
                 writeln!(f, "Rule does not apply for {base_state_hash}")?;
@@ -284,10 +285,21 @@ impl Cache {
         )
     }
 
-    pub fn graph(
+    pub fn graph<T>(
         &self,
-        possible_states: PossibleStates,
-    ) -> Result<Graph<StateHash, RuleName>, ErrorKind> {
+        possible_states: PossibleStates<T>,
+    ) -> Result<Graph<StateHash, RuleName>, ErrorKind<T>>
+    where
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    {
         let mut graph = Graph::<StateHash, RuleName>::new();
         let mut nodes: HashMap<StateHash, NodeIndex> = HashMap::new();
         for (state_hash, _) in possible_states.iter() {
@@ -413,8 +425,8 @@ mod tests {
     fn cache_add_should_work() {
         let mut cache = Cache::new();
         let rule_name = RuleName::new("test");
-        let base_state_hash = StateHash::new(&State::default());
-        let new_state_hash = StateHash::new(&State::default());
+        let base_state_hash = StateHash::new::<i64>(&State::default());
+        let new_state_hash = StateHash::new::<i64>(&State::default());
         let applies = RuleApplies::from(true);
         cache
             .add_condition(rule_name.clone(), base_state_hash, applies)
@@ -439,8 +451,8 @@ mod tests {
     fn cache_no_overwriting_values() {
         let mut cache = Cache::new();
         let rule_name = RuleName::new("test");
-        let base_state_hash = StateHash::new(&State::default());
-        let new_state_hash = StateHash::new(&State::default());
+        let base_state_hash = StateHash::new::<i64>(&State::default());
+        let new_state_hash = StateHash::new::<i64>(&State::default());
         let applies = RuleApplies::from(true);
         cache
             .add_condition(rule_name.clone(), base_state_hash, applies)
@@ -450,7 +462,7 @@ mod tests {
             .unwrap();
         let new_new_state_hash = StateHash::new(&State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(1))]),
         )]));
         let new_applies = RuleApplies::from(false);
         cache
@@ -476,8 +488,8 @@ mod tests {
     fn cache_apply_updates() {
         let mut cache = Cache::new();
         let rule_name = RuleName::new("test");
-        let base_state_hash = StateHash::new(&State::default());
-        let new_state_hash = StateHash::new(&State::default());
+        let base_state_hash = StateHash::new::<i64>(&State::default());
+        let new_state_hash = StateHash::new::<i64>(&State::default());
         let applies = RuleApplies::from(true);
         let condition_update =
             ConditionCacheUpdate::new(rule_name.clone(), base_state_hash, applies);

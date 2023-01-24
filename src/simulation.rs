@@ -1,4 +1,7 @@
-use std::fmt::Display;
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+};
 
 use crate::prelude::*;
 
@@ -7,13 +10,27 @@ use petgraph::Graph;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Step {
+pub struct Step<T> {
     reachable_states: ReachableStates,
-    applied_rules: HashMap<RuleName, Rule>,
+    applied_rules: HashMap<RuleName, Rule<T>>,
 }
 
-impl Step {
-    pub fn new(reachable_states: ReachableStates, applied_rules: HashMap<RuleName, Rule>) -> Step {
+impl<
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    > Step<T>
+{
+    pub fn new(
+        reachable_states: ReachableStates,
+        applied_rules: HashMap<RuleName, Rule<T>>,
+    ) -> Step<T> {
         Step {
             reachable_states,
             applied_rules,
@@ -22,29 +39,40 @@ impl Step {
     pub fn reachable_states(&self) -> &ReachableStates {
         &self.reachable_states
     }
-    pub fn applied_rules(&self) -> &HashMap<RuleName, Rule> {
+    pub fn applied_rules(&self) -> &HashMap<RuleName, Rule<T>> {
         &self.applied_rules
     }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct History {
-    steps: Vec<Step>,
+pub struct History<T> {
+    steps: Vec<Step<T>>,
 }
 
-impl History {
-    pub fn new(reachable_states: ReachableStates) -> History {
+impl<
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    > History<T>
+{
+    pub fn new(reachable_states: ReachableStates) -> History<T> {
         History {
             steps: vec![Step::new(reachable_states, HashMap::new())],
         }
     }
-    pub fn steps(&self) -> &Vec<Step> {
+    pub fn steps(&self) -> &Vec<Step<T>> {
         &self.steps
     }
-    pub fn time(&self, time: usize) -> Option<&Step> {
+    pub fn time(&self, time: usize) -> Option<&Step<T>> {
         self.steps.get(time)
     }
-    pub fn append(&mut self, step: Step) {
+    pub fn append(&mut self, step: Step<T>) {
         self.steps.push(step);
     }
 }
@@ -56,7 +84,10 @@ struct SerializableStep {
 }
 
 impl SerializableStep {
-    pub fn to_step(&self, rules: &HashMap<RuleName, Rule>) -> Result<Step, RuleError> {
+    pub fn to_step<T: Clone>(
+        &self,
+        rules: &HashMap<RuleName, Rule<T>>,
+    ) -> Result<Step<T>, RuleError> {
         Ok(Step {
             reachable_states: self.reachable_states.clone(),
             applied_rules: self
@@ -73,7 +104,7 @@ impl SerializableStep {
                         })
                     }
                 })
-                .collect::<Result<HashMap<RuleName, Rule>, RuleError>>()?,
+                .collect::<Result<HashMap<RuleName, Rule<T>>, RuleError>>()?,
         })
     }
 }
@@ -84,22 +115,34 @@ struct SerializableHistory {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct SerializableSimulation {
+pub struct SerializableSimulation<T> {
     history: SerializableHistory,
     rules: HashSet<RuleName>,
-    possible_states: PossibleStates,
+    possible_states: PossibleStates<T>,
     cache: Cache,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct Simulation {
-    history: History,
-    rules: HashMap<RuleName, Rule>,
-    possible_states: PossibleStates,
+pub struct Simulation<T> {
+    history: History<T>,
+    rules: HashMap<RuleName, Rule<T>>,
+    possible_states: PossibleStates<T>,
     cache: Cache,
 }
 
-impl Display for Simulation {
+impl<
+        T: std::hash::Hash
+            + std::clone::Clone
+            + std::fmt::Debug
+            + Debug
+            + Serialize
+            + for<'a> Deserialize<'a>
+            + PartialEq
+            + Send
+            + Sync
+            + Default,
+    > Display for Simulation<T>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Simulation:")?;
         writeln!(f, "  Time: {}", self.time())?;
@@ -121,8 +164,19 @@ impl Display for Simulation {
     }
 }
 
-impl Iterator for Simulation {
-    type Item = Result<Simulation, ErrorKind>;
+impl<
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    > Iterator for Simulation<T>
+{
+    type Item = Result<Simulation<T>, ErrorKind<T>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let result = self.next_step();
@@ -133,21 +187,32 @@ impl Iterator for Simulation {
     }
 }
 
-impl Simulation {
-    pub fn new(initial_state: State, rules: HashMap<RuleName, Rule>) -> Simulation {
+impl<
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    > Simulation<T>
+{
+    pub fn new(initial_state: State<T>, rules: HashMap<RuleName, Rule<T>>) -> Simulation<T> {
         let initial_state_hash = StateHash::new(&initial_state);
         Simulation::new_with_reachable_states(
-            PossibleStates::from(HashMap::from([(initial_state_hash, initial_state)])),
+            PossibleStates::new(HashMap::from([(initial_state_hash, initial_state)])),
             ReachableStates::from(HashMap::from([(initial_state_hash, Probability::from(1.))])),
             rules,
         )
     }
 
     pub fn new_with_reachable_states(
-        possible_states: PossibleStates,
+        possible_states: PossibleStates<T>,
         reachable_states: ReachableStates,
-        rules: HashMap<RuleName, Rule>,
-    ) -> Simulation {
+        rules: HashMap<RuleName, Rule<T>>,
+    ) -> Simulation<T> {
         Simulation {
             possible_states,
             rules,
@@ -156,11 +221,11 @@ impl Simulation {
         }
     }
 
-    pub fn history(&self) -> &History {
+    pub fn history(&self) -> &History<T> {
         &self.history
     }
 
-    pub fn to_serializable(&self) -> SerializableSimulation {
+    pub fn to_serializable(&self) -> SerializableSimulation<T> {
         let history = SerializableHistory {
             steps: self
                 .history
@@ -181,15 +246,15 @@ impl Simulation {
     }
 
     pub fn from_serializable(
-        serializable_simulation: SerializableSimulation,
-        rules: HashMap<RuleName, Rule>,
-    ) -> Result<Simulation, ErrorKind> {
-        let steps: Vec<Step> = serializable_simulation
+        serializable_simulation: SerializableSimulation<T>,
+        rules: HashMap<RuleName, Rule<T>>,
+    ) -> Result<Simulation<T>, ErrorKind<T>> {
+        let steps: Vec<Step<T>> = serializable_simulation
             .history
             .steps
             .iter()
             .map(|step| step.to_step(&rules))
-            .collect::<Result<Vec<Step>, RuleError>>()?;
+            .collect::<Result<Vec<Step<T>>, RuleError>>()?;
         let history = History { steps };
         Ok(Simulation {
             history,
@@ -207,13 +272,13 @@ impl Simulation {
                         })
                     }
                 })
-                .collect::<Result<HashMap<RuleName, Rule>, RuleError>>()?,
+                .collect::<Result<HashMap<RuleName, Rule<T>>, RuleError>>()?,
             possible_states: serializable_simulation.possible_states,
             cache: serializable_simulation.cache,
         })
     }
 
-    pub fn clone_without_history(&self) -> Simulation {
+    pub fn clone_without_history(&self) -> Simulation<T> {
         Simulation {
             history: History::new(self.initial_distribution().clone()),
             rules: self.rules.clone(),
@@ -226,7 +291,7 @@ impl Simulation {
         self.history.steps().first().unwrap().reachable_states()
     }
 
-    pub fn possible_states(&self) -> &PossibleStates {
+    pub fn possible_states(&self) -> &PossibleStates<T> {
         &self.possible_states
     }
 
@@ -239,7 +304,7 @@ impl Simulation {
             .append(Step::new(reachable_states, HashMap::new()));
     }
 
-    pub fn rules(&self) -> &HashMap<RuleName, Rule> {
+    pub fn rules(&self) -> &HashMap<RuleName, Rule<T>> {
         &self.rules
     }
 
@@ -251,14 +316,14 @@ impl Simulation {
         self.reachable_states().entropy()
     }
 
-    pub fn next_step(&mut self) -> Result<(), ErrorKind> {
+    pub fn next_step(&mut self) -> Result<(), ErrorKind<T>> {
         let rules = self.rules.clone();
         let next_reachable_states = self.next_reachable_states(&rules)?;
         self.history.append(Step::new(next_reachable_states, rules));
         Ok(())
     }
 
-    pub fn run(&mut self, steps: usize) -> Result<(), ErrorKind> {
+    pub fn run(&mut self, steps: usize) -> Result<(), ErrorKind<T>> {
         for _ in 0..steps {
             self.next_step()?;
         }
@@ -281,7 +346,7 @@ impl Simulation {
         &mut self,
         iteration_limit: Option<usize>,
         modify_state: bool,
-    ) -> Result<(), ErrorKind> {
+    ) -> Result<(), ErrorKind<T>> {
         if modify_state {
             let mut num_current_possible_states = 0;
             while num_current_possible_states != self.possible_states().len() {
@@ -307,7 +372,10 @@ impl Simulation {
         }
     }
 
-    pub fn apply_intervention(&mut self, rules: &HashMap<RuleName, Rule>) -> Result<(), ErrorKind> {
+    pub fn apply_intervention(
+        &mut self,
+        rules: &HashMap<RuleName, Rule<T>>,
+    ) -> Result<(), ErrorKind<T>> {
         for rule_name in rules.keys() {
             if self.rules.contains_key(rule_name) {
                 return Err(ErrorKind::from(CacheError::RuleAlreadyExists {
@@ -324,8 +392,8 @@ impl Simulation {
 
     fn next_reachable_states(
         &mut self,
-        rules: &HashMap<RuleName, Rule>,
-    ) -> Result<ReachableStates, ErrorKind> {
+        rules: &HashMap<RuleName, Rule<T>>,
+    ) -> Result<ReachableStates, ErrorKind<T>> {
         self.reachable_states().clone().apply_rules(
             &mut self.possible_states,
             &mut self.cache,
@@ -336,7 +404,7 @@ impl Simulation {
     pub fn graph(
         &mut self,
         iteration_limit: Option<usize>,
-    ) -> Result<Graph<StateHash, RuleName>, ErrorKind> {
+    ) -> Result<Graph<StateHash, RuleName>, ErrorKind<T>> {
         self.full_traversal(iteration_limit, false)?;
         self.cache.graph(self.possible_states.clone())
     }
@@ -344,7 +412,7 @@ impl Simulation {
     pub fn uniform_distribution_is_steady(
         &mut self,
         iteration_limit: Option<usize>,
-    ) -> Result<bool, ErrorKind> {
+    ) -> Result<bool, ErrorKind<T>> {
         self.full_traversal(iteration_limit, false)?;
         let simulation = self.clone();
         let uniform_probability = Probability::from(1. / simulation.possible_states.len() as f64);
