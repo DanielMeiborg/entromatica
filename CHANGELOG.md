@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.23.0](https://github.com/DanielMeiborg/entromatica/compare/v0.22.1...v0.23.0) (2023-01-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* Rule now uses closures
+* Entities now have to be constructed with generic parameters. Amount has been conceptually replaced with Parameter.
+
+### Features
+
+* closures for rules ([cdfcf7a](https://github.com/DanielMeiborg/entromatica/commit/cdfcf7af08618679088f3289c9e6c4a186dc621c))
+* Generic parameters for Entity ([c44821f](https://github.com/DanielMeiborg/entromatica/commit/c44821ff85ed7a37e82ec9f628c465824fae2e3a))
+
+
+### Bug Fixes
+
+* clippy warning 'variables can be used directly in the `format!` string' ([64f3f32](https://github.com/DanielMeiborg/entromatica/commit/64f3f329d201bbf4c8e8247b761d8501e2a474dc))
+
 ## [0.22.1](https://github.com/DanielMeiborg/entromatica/compare/v0.22.0...v0.22.1) (2023-01-23)
 
 
