@@ -57,7 +57,7 @@ impl<T: Clone + Debug> From<PoisonError<MutexGuard<'_, PossibleStates<T>>>> for 
     fn from(poison_error: PoisonError<MutexGuard<'_, PossibleStates<T>>>) -> Self {
         Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
             ThreadingError::PossibleStatesSyncError {
-                msg: format!("{:?}", poison_error),
+                msg: format!("{poison_error:?}"),
                 context: get_backtrace(),
             },
         )))
@@ -68,7 +68,7 @@ impl<T: Clone + Debug> From<PoisonError<MutexGuard<'_, ReachableStates>>> for Er
     fn from(poison_error: PoisonError<MutexGuard<'_, ReachableStates>>) -> Self {
         Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
             ThreadingError::ReachableStatesSyncError {
-                msg: format!("{:?}", poison_error),
+                msg: format!("{poison_error:?}"),
                 context: get_backtrace(),
             },
         )))
@@ -79,7 +79,7 @@ impl<T: Clone + Debug> From<PoisonError<MutexGuard<'_, Cache>>> for ErrorKind<T>
     fn from(poison_error: PoisonError<MutexGuard<'_, Cache>>) -> Self {
         Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
             ThreadingError::CacheSyncError {
-                msg: format!("{:?}", poison_error),
+                msg: format!("{poison_error:?}"),
                 context: get_backtrace(),
             },
         )))
