@@ -269,7 +269,7 @@ impl<
         self.entities.iter_mut()
     }
 
-    pub(crate) fn set_parameter(
+    pub fn set_parameter(
         &mut self,
         target: &EntityName,
         parameter_name: ParameterName,
@@ -281,6 +281,7 @@ impl<
         Ok(())
     }
 
+    #[allow(clippy::type_complexity)]
     pub(crate) fn reachable_states(
         &self,
         base_state_probability: &Probability,
@@ -694,7 +695,13 @@ impl ReachableStates {
         )
     }
 
-    pub(crate) fn apply_rules<
+    pub(crate) fn apply_rules<T>(
+        &self,
+        possible_states: &mut PossibleStates<T>,
+        cache: &mut Cache,
+        rules: &HashMap<RuleName, Rule<T>>,
+    ) -> Result<ReachableStates, ErrorKind<T>>
+    where
         T: Hash
             + Clone
             + PartialEq
@@ -704,12 +711,7 @@ impl ReachableStates {
             + Send
             + Sync
             + for<'a> Deserialize<'a>,
-    >(
-        &self,
-        possible_states: &mut PossibleStates<T>,
-        cache: &mut Cache,
-        rules: &HashMap<RuleName, Rule<T>>,
-    ) -> Result<ReachableStates, ErrorKind<T>> {
+    {
         let new_reachable_states_mutex = Mutex::new(ReachableStates::new());
         let possible_states_update_mutex = Mutex::new(PossibleStates::default());
         let cache_update_mutex = Mutex::new(cache.clone());

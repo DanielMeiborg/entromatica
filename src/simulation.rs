@@ -9,24 +9,13 @@ use hashbrown::{HashMap, HashSet};
 use petgraph::Graph;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Default)]
 pub struct Step<T> {
     reachable_states: ReachableStates,
     applied_rules: HashMap<RuleName, Rule<T>>,
 }
 
-impl<
-        T: Hash
-            + Clone
-            + PartialEq
-            + Debug
-            + Default
-            + Serialize
-            + Send
-            + Sync
-            + for<'a> Deserialize<'a>,
-    > Step<T>
-{
+impl<T> Step<T> {
     pub fn new(
         reachable_states: ReachableStates,
         applied_rules: HashMap<RuleName, Rule<T>>,
@@ -44,23 +33,12 @@ impl<
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Default)]
 pub struct History<T> {
     steps: Vec<Step<T>>,
 }
 
-impl<
-        T: Hash
-            + Clone
-            + PartialEq
-            + Debug
-            + Default
-            + Serialize
-            + Send
-            + Sync
-            + for<'a> Deserialize<'a>,
-    > History<T>
-{
+impl<T> History<T> {
     pub fn new(reachable_states: ReachableStates) -> History<T> {
         History {
             steps: vec![Step::new(reachable_states, HashMap::new())],
@@ -87,7 +65,18 @@ impl SerializableStep {
     pub fn to_step<T: Clone>(
         &self,
         rules: &HashMap<RuleName, Rule<T>>,
-    ) -> Result<Step<T>, RuleError> {
+    ) -> Result<Step<T>, RuleError>
+    where
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    {
         Ok(Step {
             reachable_states: self.reachable_states.clone(),
             applied_rules: self
@@ -122,25 +111,24 @@ pub struct SerializableSimulation<T> {
     cache: Cache,
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Default)]
 pub struct Simulation<T> {
-    history: History<T>,
-    rules: HashMap<RuleName, Rule<T>>,
+    history: Box<History<T>>,
+    rules: Box<HashMap<RuleName, Rule<T>>>,
     possible_states: PossibleStates<T>,
     cache: Cache,
 }
 
 impl<
-        T: std::hash::Hash
-            + std::clone::Clone
-            + std::fmt::Debug
-            + Debug
-            + Serialize
-            + for<'a> Deserialize<'a>
+        T: Hash
+            + Clone
             + PartialEq
+            + Debug
+            + Default
+            + Serialize
             + Send
             + Sync
-            + Default,
+            + for<'a> Deserialize<'a>,
     > Display for Simulation<T>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -164,17 +152,17 @@ impl<
     }
 }
 
-impl<
-        T: Hash
-            + Clone
-            + PartialEq
-            + Debug
-            + Default
-            + Serialize
-            + Send
-            + Sync
-            + for<'a> Deserialize<'a>,
-    > Iterator for Simulation<T>
+impl<T> Iterator for Simulation<T>
+where
+    T: Hash
+        + Clone
+        + PartialEq
+        + Debug
+        + Default
+        + Serialize
+        + Send
+        + Sync
+        + for<'a> Deserialize<'a>,
 {
     type Item = Result<Simulation<T>, ErrorKind<T>>;
 
@@ -215,8 +203,8 @@ impl<
     ) -> Simulation<T> {
         Simulation {
             possible_states,
-            rules,
-            history: History::new(reachable_states),
+            rules: Box::new(rules),
+            history: Box::new(History::new(reachable_states)),
             cache: Cache::new(),
         }
     }
@@ -253,26 +241,28 @@ impl<
             .history
             .steps
             .iter()
-            .map(|step| step.to_step(&rules))
+            .map(|step| step.to_step::<T>(&rules))
             .collect::<Result<Vec<Step<T>>, RuleError>>()?;
         let history = History { steps };
         Ok(Simulation {
-            history,
-            rules: serializable_simulation
-                .rules
-                .iter()
-                .map(|rule_name| {
-                    let rule = rules.get(rule_name);
-                    if let Some(rule) = rule {
-                        Ok((rule_name.clone(), rule.clone()))
-                    } else {
-                        Err(RuleError::RuleNotFound {
-                            rule_name: rule_name.clone(),
-                            context: get_backtrace(),
-                        })
-                    }
-                })
-                .collect::<Result<HashMap<RuleName, Rule<T>>, RuleError>>()?,
+            history: Box::new(history),
+            rules: Box::new(
+                serializable_simulation
+                    .rules
+                    .iter()
+                    .map(|rule_name| {
+                        let rule = rules.get(rule_name);
+                        if let Some(rule) = rule {
+                            Ok((rule_name.clone(), rule.clone()))
+                        } else {
+                            Err(RuleError::RuleNotFound {
+                                rule_name: rule_name.clone(),
+                                context: get_backtrace(),
+                            })
+                        }
+                    })
+                    .collect::<Result<HashMap<RuleName, Rule<T>>, RuleError>>()?,
+            ),
             possible_states: serializable_simulation.possible_states,
             cache: serializable_simulation.cache,
         })
@@ -280,7 +270,7 @@ impl<
 
     pub fn clone_without_history(&self) -> Simulation<T> {
         Simulation {
-            history: History::new(self.initial_distribution().clone()),
+            history: Box::new(History::new(self.initial_distribution().clone())),
             rules: self.rules.clone(),
             possible_states: self.possible_states.clone(),
             cache: self.cache.clone(),
@@ -319,7 +309,8 @@ impl<
     pub fn next_step(&mut self) -> Result<(), ErrorKind<T>> {
         let rules = self.rules.clone();
         let next_reachable_states = self.next_reachable_states(&rules)?;
-        self.history.append(Step::new(next_reachable_states, rules));
+        self.history
+            .append(Step::new(next_reachable_states, *rules));
         Ok(())
     }
 

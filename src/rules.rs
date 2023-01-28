@@ -1,32 +1,15 @@
 use std::{
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
+    sync::Arc,
 };
 
 use backtrace::Backtrace as trc;
 use derive_more::*;
-use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::prelude::*;
-
-#[derive(Clone, Debug, PartialEq, Default)]
-pub enum Action<T> {
-    #[default]
-    None,
-    SetParameter(EntityName, ParameterName, Parameter<T>),
-    SetFunction(fn(State<T>) -> HashMap<EntityName, (ParameterName, Parameter<T>)>),
-    InsertEntity(EntityName, Entity<T>),
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
-pub enum Condition<T> {
-    #[default]
-    Never,
-    Always,
-    Function(fn(State<T>) -> RuleApplies),
-}
 
 #[derive(
     PartialOrd,
@@ -78,26 +61,15 @@ impl ProbabilityWeight {
     }
 }
 
-#[derive(Debug, PartialEq, Default, From, Into, Clone)]
+#[derive(From, Into, Clone)]
 pub struct Rule<T> {
     description: String,
-    condition: Condition<T>,
+    condition: Arc<dyn Fn(State<T>) -> RuleApplies + Send + Sync>,
     weight: ProbabilityWeight,
-    action: Action<T>,
+    action: Arc<dyn Fn(State<T>) -> State<T> + Send + Sync>,
 }
 
-impl<
-        T: Hash
-            + Clone
-            + PartialEq
-            + Debug
-            + Default
-            + Serialize
-            + Send
-            + Sync
-            + for<'a> Deserialize<'a>,
-    > Display for Rule<T>
-{
+impl<T: Debug> Debug for Rule<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Rule:")?;
         writeln!(f, "Description: {}", self.description)?;
@@ -106,23 +78,32 @@ impl<
     }
 }
 
-impl<
-        T: Hash
-            + Clone
-            + PartialEq
-            + Debug
-            + Default
-            + Serialize
-            + Send
-            + Sync
-            + for<'a> Deserialize<'a>,
-    > Rule<T>
+impl<T> Display for Rule<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Rule:")?;
+        writeln!(f, "Description: {}", self.description)?;
+        writeln!(f, "Weight: {}", self.weight)?;
+        Ok(())
+    }
+}
+
+impl<T> Rule<T>
+where
+    T: Clone
+        + Debug
+        + Hash
+        + PartialEq
+        + Default
+        + Serialize
+        + Send
+        + Sync
+        + for<'a> Deserialize<'a>,
 {
     pub fn new(
         description: String,
-        condition: Condition<T>,
+        condition: Arc<dyn Fn(State<T>) -> RuleApplies + Send + Sync>,
         probability_weight: ProbabilityWeight,
-        action: Action<T>,
+        action: Arc<dyn Fn(State<T>) -> State<T> + Send + Sync>,
     ) -> Self {
         Self {
             description,
@@ -145,11 +126,7 @@ impl<
         if cache.contains_condition(&rule_name, &base_state_hash)? {
             Ok((*cache.condition(&rule_name, &base_state_hash)?, None))
         } else {
-            let rule_applies = match self.condition {
-                Condition::Never => RuleApplies(false),
-                Condition::Always => RuleApplies(true),
-                Condition::Function(condition) => condition(state),
-            };
+            let rule_applies = (self.condition)(state);
             let condition_cache_update =
                 ConditionCacheUpdate::new(rule_name, base_state_hash, rule_applies);
             Ok((rule_applies, Some(condition_cache_update)))
@@ -173,28 +150,7 @@ impl<
                 None,
             ))
         } else {
-            let new_state = match &self.action {
-                Action::None => base_state,
-                Action::SetParameter(entity_name, parameter, parameter_value) => {
-                    let mut new_state = base_state;
-                    let entity = new_state.entity_mut(entity_name)?;
-                    let parameter = entity.parameter_mut(parameter)?;
-                    *parameter = parameter_value.clone();
-                    new_state
-                }
-                Action::SetFunction(get_mutations) => {
-                    let mut new_state = base_state.clone();
-                    for (target, (parameter, amount)) in get_mutations(base_state) {
-                        new_state.set_parameter(&target, parameter, amount)?;
-                    }
-                    new_state
-                }
-                Action::InsertEntity(entity_name, entity) => {
-                    let mut new_state = base_state;
-                    new_state.insert_entity(entity_name.clone(), entity.clone());
-                    new_state
-                }
-            };
+            let new_state = (self.action)(base_state);
 
             let new_state_hash = StateHash::new(&new_state);
             let condition_cache_update =
@@ -211,12 +167,12 @@ impl<
         &self.description
     }
 
-    pub fn condition(&self) -> &Condition<T> {
-        &self.condition
+    pub fn condition(&self) -> &(dyn Fn(State<T>) -> RuleApplies + Send + Sync) {
+        &*self.condition
     }
 
-    pub fn action(&self) -> &Action<T> {
-        &self.action
+    pub fn action(&self) -> &(dyn Fn(State<T>) -> State<T> + Send + Sync) {
+        &*self.action
     }
 }
 
@@ -295,9 +251,9 @@ mod tests {
         let mut cache = Cache::new();
         let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            Condition::<i64>::Always,
+            Arc::new(|_: State<i32>| RuleApplies(true)),
             ProbabilityWeight(1.),
-            Action::None,
+            Arc::new(|state: State<i32>| state),
         );
         let rule_name = RuleName::new("Test");
         let state = State::default();
@@ -315,9 +271,9 @@ mod tests {
         let cache = Cache::new();
         let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            Condition::<i64>::Always,
+            Arc::new(|_: State<i32>| RuleApplies(true)),
             ProbabilityWeight(1.),
-            Action::None,
+            Arc::new(|state: State<i32>| state),
         );
         let rule_name = RuleName::new("Test");
         let state = State::default();
@@ -338,9 +294,9 @@ mod tests {
         let mut cache = Cache::new();
         let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            Condition::<i64>::Always,
+            Arc::new(|_: State<i32>| RuleApplies(true)),
             ProbabilityWeight(1.),
-            Action::None,
+            Arc::new(|state: State<i32>| state),
         );
         let rule_name = RuleName::new("Test");
         let state = State::default();
@@ -370,9 +326,9 @@ mod tests {
         let cache = Cache::new();
         let rule = Rule::new(
             "Only for testing purposes".to_string(),
-            Condition::<i64>::Always,
+            Arc::new(|_: State<i32>| RuleApplies(true)),
             ProbabilityWeight(1.),
-            Action::None,
+            Arc::new(|state: State<i32>| state),
         );
         let rule_name = RuleName::new("Test");
         let state = State::default();

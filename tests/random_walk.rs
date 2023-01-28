@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use entromatica::prelude::*;
 
 use hashbrown::HashMap;
@@ -5,74 +7,78 @@ const MAX_AMOUNT: i32 = 4;
 const MAX_TIME: usize = 10;
 
 fn setup() -> Simulation<i32> {
+    let walk_forward = Rule::new(
+        "".to_string(),
+        Arc::new(|_: State<i32>| RuleApplies::new(true)),
+        ProbabilityWeight::from(1.),
+        Arc::new(|state: State<i32>| {
+            let mut new_state = state.clone();
+            let current_point = *state
+                .entity(&EntityName::new("main"))
+                .unwrap()
+                .parameter(&ParameterName::new("point"))
+                .unwrap()
+                .to_owned()
+                .value();
+            if current_point < MAX_AMOUNT {
+                new_state
+                    .entity_mut(&EntityName::new("main"))
+                    .unwrap()
+                    .parameter_mut(&ParameterName::new("point"))
+                    .unwrap()
+                    .set_value(current_point + 1);
+            } else {
+                new_state
+                    .entity_mut(&EntityName::new("main"))
+                    .unwrap()
+                    .parameter_mut(&ParameterName::new("point"))
+                    .unwrap()
+                    .set_value(0);
+            }
+            new_state
+        }) as Arc<dyn Fn(State<i32>) -> State<i32> + Send + Sync>,
+    );
+
+    let walk_backward = Rule::new(
+        "".to_string(),
+        Arc::new(|_: State<i32>| RuleApplies::new(true)),
+        ProbabilityWeight::from(1.),
+        Arc::new(|state: State<i32>| {
+            let mut new_state = state.clone();
+            let current_point = *state
+                .entity(&EntityName::new("main"))
+                .unwrap()
+                .parameter(&ParameterName::new("point"))
+                .unwrap()
+                .to_owned()
+                .value();
+            if current_point == 0 {
+                new_state
+                    .entity_mut(&EntityName::new("main"))
+                    .unwrap()
+                    .parameter_mut(&ParameterName::new("point"))
+                    .unwrap()
+                    .set_value(MAX_AMOUNT);
+            } else {
+                new_state
+                    .entity_mut(&EntityName::new("main"))
+                    .unwrap()
+                    .parameter_mut(&ParameterName::new("point"))
+                    .unwrap()
+                    .set_value(current_point - 1);
+            }
+            new_state
+        }) as Arc<dyn Fn(State<i32>) -> State<i32> + Send + Sync>,
+    );
+
     let initial_state = State::new(vec![(
         EntityName::new("main"),
         Entity::new(vec![(ParameterName::new("point"), Parameter::new(0))]),
     )]);
 
     let rules = HashMap::from([
-        (
-            RuleName::new("walk forward"),
-            Rule::new(
-                "".to_string(),
-                Condition::Always,
-                ProbabilityWeight::from(1.),
-                Action::SetFunction(|state: State<i32>| {
-                    let current_point = *state
-                        .entity(&EntityName::new("main"))
-                        .unwrap()
-                        .parameter(&ParameterName::new("point"))
-                        .unwrap()
-                        .to_owned()
-                        .value();
-                    if current_point < MAX_AMOUNT {
-                        HashMap::from([(
-                            EntityName::new("main"),
-                            (
-                                ParameterName::new("point"),
-                                Parameter::new(current_point + 1),
-                            ),
-                        )])
-                    } else {
-                        HashMap::from([(
-                            EntityName::new("main"),
-                            (ParameterName::new("point"), Parameter::new(0)),
-                        )])
-                    }
-                }),
-            ),
-        ),
-        (
-            RuleName::new("walk back"),
-            Rule::new(
-                "".to_string(),
-                Condition::Always,
-                ProbabilityWeight::from(1.),
-                Action::SetFunction(|state| {
-                    let current_point = *state
-                        .entity(&EntityName::new("main"))
-                        .unwrap()
-                        .parameter(&ParameterName::new("point"))
-                        .unwrap()
-                        .to_owned()
-                        .value();
-                    if current_point == 0 {
-                        HashMap::from([(
-                            EntityName::new("main"),
-                            (ParameterName::new("point"), Parameter::new(MAX_AMOUNT)),
-                        )])
-                    } else {
-                        HashMap::from([(
-                            EntityName::new("main"),
-                            (
-                                ParameterName::new("point"),
-                                Parameter::new(current_point - 1),
-                            ),
-                        )])
-                    }
-                }),
-            ),
-        ),
+        (RuleName::new("walk forward"), walk_forward),
+        (RuleName::new("walk back"), walk_backward),
     ]);
     Simulation::new(initial_state, rules)
 }
@@ -125,13 +131,20 @@ fn random_walk() {
             RuleName::new("Go to 0"),
             Rule::new(
                 "Go to 0".to_string(),
-                Condition::Always,
+                Arc::new(|_: State<i32>| RuleApplies::new(true))
+                    as Arc<dyn Fn(State<i32>) -> RuleApplies + Send + Sync>,
                 ProbabilityWeight::from(1.),
-                Action::SetParameter(
-                    EntityName::new("main"),
-                    ParameterName::new("point"),
-                    Parameter::new(0),
-                ),
+                Arc::new(|state: State<i32>| {
+                    let mut new_state = state;
+                    new_state
+                        .set_parameter(
+                            &EntityName::new("main"),
+                            ParameterName::new("point"),
+                            Parameter::new(0),
+                        )
+                        .unwrap();
+                    new_state
+                }) as Arc<dyn Fn(State<i32>) -> State<i32> + Send + Sync>,
             ),
         )]))
         .unwrap();
@@ -204,7 +217,15 @@ fn serialization() {
         .unwrap(),
         serializable_simulation
     );
-    let reconstructed_simulation: Simulation<i32> =
+    let mut reconstructed_simulation: Simulation<i32> =
         Simulation::from_serializable(serializable_simulation, simulation.rules().clone()).unwrap();
-    assert_eq!(reconstructed_simulation, simulation);
+    // Run the reconstructed simulation and the original simulation for a few steps and then compare the reachable states.
+    for _ in 0..10 {
+        assert_eq!(
+            reconstructed_simulation.reachable_states(),
+            simulation.reachable_states()
+        );
+        reconstructed_simulation.next_step().unwrap();
+        simulation.next_step().unwrap();
+    }
 }
