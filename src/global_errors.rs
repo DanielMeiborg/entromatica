@@ -1,6 +1,8 @@
+use std::fmt::Debug;
 use std::sync::{MutexGuard, PoisonError};
 
 use backtrace::Backtrace as trc;
+
 use thiserror::Error;
 
 use crate::prelude::*;
@@ -19,7 +21,7 @@ pub(crate) enum InternalErrorKind {
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Error)]
-pub enum ErrorKind {
+pub enum ErrorKind<T: Debug + Clone> {
     #[error("EntityError: {0:#?}")]
     EntityError(#[from] EntityError),
 
@@ -27,7 +29,7 @@ pub enum ErrorKind {
     InternalError(#[from] InternalError),
 
     #[error("PossibleStatesError: {0:#?}")]
-    PossibleStatesError(#[from] PossibleStatesError),
+    PossibleStatesError(#[from] PossibleStatesError<T>),
 
     #[error("RuleError: {0:#?}")]
     RuleError(#[from] RuleError),
@@ -45,39 +47,39 @@ pub enum ErrorKind {
     IterationLimitReached { time: usize, context: trc },
 }
 
-impl From<CacheError> for ErrorKind {
+impl<T: Clone + Debug> From<CacheError> for ErrorKind<T> {
     fn from(cache_error: CacheError) -> Self {
         Self::InternalError(InternalError(InternalErrorKind::CacheError(cache_error)))
     }
 }
 
-impl From<PoisonError<MutexGuard<'_, PossibleStates>>> for ErrorKind {
-    fn from(poison_error: PoisonError<MutexGuard<'_, PossibleStates>>) -> Self {
+impl<T: Clone + Debug> From<PoisonError<MutexGuard<'_, PossibleStates<T>>>> for ErrorKind<T> {
+    fn from(poison_error: PoisonError<MutexGuard<'_, PossibleStates<T>>>) -> Self {
         Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
             ThreadingError::PossibleStatesSyncError {
-                msg: format!("{:?}", poison_error),
+                msg: format!("{poison_error:?}"),
                 context: get_backtrace(),
             },
         )))
     }
 }
 
-impl From<PoisonError<MutexGuard<'_, ReachableStates>>> for ErrorKind {
+impl<T: Clone + Debug> From<PoisonError<MutexGuard<'_, ReachableStates>>> for ErrorKind<T> {
     fn from(poison_error: PoisonError<MutexGuard<'_, ReachableStates>>) -> Self {
         Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
             ThreadingError::ReachableStatesSyncError {
-                msg: format!("{:?}", poison_error),
+                msg: format!("{poison_error:?}"),
                 context: get_backtrace(),
             },
         )))
     }
 }
 
-impl From<PoisonError<MutexGuard<'_, Cache>>> for ErrorKind {
+impl<T: Clone + Debug> From<PoisonError<MutexGuard<'_, Cache>>> for ErrorKind<T> {
     fn from(poison_error: PoisonError<MutexGuard<'_, Cache>>) -> Self {
         Self::InternalError(InternalError(InternalErrorKind::ThreadingError(
             ThreadingError::CacheSyncError {
-                msg: format!("{:?}", poison_error),
+                msg: format!("{poison_error:?}"),
                 context: get_backtrace(),
             },
         )))

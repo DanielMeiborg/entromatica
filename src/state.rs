@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SendError;
@@ -36,29 +37,80 @@ impl ParameterName {
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
-pub struct Entity {
-    parameters: HashMap<ParameterName, Amount>,
+#[derive(Hash, Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+pub struct Parameter<T> {
+    value: T,
 }
 
-impl Display for Entity {
+impl<
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    > Parameter<T>
+{
+    pub fn new(value: T) -> Self {
+        Self { value }
+    }
+
+    pub fn value(&self) -> &T {
+        &self.value
+    }
+
+    pub fn value_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+
+    pub fn set_value(&mut self, value: T) {
+        self.value = value;
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Entity<T> {
+    parameters: HashMap<ParameterName, Parameter<T>>,
+}
+
+impl<T: Hash> Hash for Entity<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let mut hasher = DefaultHasher::new();
+        for (parameter_name, parameter) in &self.parameters {
+            parameter_name.hash(&mut hasher);
+            parameter.hash(&mut hasher);
+        }
+        hasher.finish().hash(state);
+    }
+}
+
+impl<T: PartialEq> PartialEq for Entity<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.parameters == other.parameters
+    }
+}
+
+impl<T: Debug> Display for Entity<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Entity:")?;
-        for (parameter_name, amount) in &self.parameters {
-            writeln!(f, "  {parameter_name}: {amount}")?;
+        for (parameter_name, parameter) in &self.parameters {
+            writeln!(f, "  {parameter_name}: {parameter:#?}")?;
         }
         Ok(())
     }
 }
 
-impl Entity {
-    pub fn new(parameters: Vec<(ParameterName, Amount)>) -> Self {
+impl<T> Entity<T> {
+    pub fn new(parameters: Vec<(ParameterName, Parameter<T>)>) -> Self {
         Self {
             parameters: parameters.into_iter().collect(),
         }
     }
 
-    pub fn parameter(&self, parameter_name: &ParameterName) -> Result<&Amount, EntityError> {
+    pub fn parameter(&self, parameter_name: &ParameterName) -> Result<&Parameter<T>, EntityError> {
         self.parameters
             .get(parameter_name)
             .ok_or_else(|| EntityError::ParameterNotFound {
@@ -70,7 +122,7 @@ impl Entity {
     pub fn parameter_mut(
         &mut self,
         parameter_name: &ParameterName,
-    ) -> Result<&mut Amount, EntityError> {
+    ) -> Result<&mut Parameter<T>, EntityError> {
         self.parameters
             .get_mut(parameter_name)
             .ok_or_else(|| EntityError::ParameterNotFound {
@@ -79,11 +131,13 @@ impl Entity {
             })
     }
 
-    pub fn iter_parameters(&self) -> impl Iterator<Item = (&ParameterName, &Amount)> {
+    pub fn iter_parameters(&self) -> impl Iterator<Item = (&ParameterName, &Parameter<T>)> {
         self.parameters.iter()
     }
 
-    pub fn iter_parameters_mut(&mut self) -> impl Iterator<Item = (&ParameterName, &mut Amount)> {
+    pub fn iter_parameters_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (&ParameterName, &mut Parameter<T>)> {
         self.parameters.iter_mut()
     }
 }
@@ -121,54 +175,71 @@ impl EntityName {
     }
 }
 
-#[derive(Clone, Debug, Default, From, Into, Serialize, Deserialize)]
-pub struct State {
-    entities: HashMap<EntityName, Entity>,
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct State<T> {
+    entities: HashMap<EntityName, Entity<T>>,
 }
 
-impl Display for State {
+impl<
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    > Display for State<T>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "State:")?;
         for (entity_name, entity) in &self.entities {
             writeln!(f, "  {entity_name}:")?;
-            for (parameter_name, amount) in &entity.parameters {
-                writeln!(f, "    {parameter_name}: {amount}")?;
+            for (parameter_name, parameter) in &entity.parameters {
+                writeln!(f, "    {parameter_name}: {parameter:#?}")?;
             }
         }
         Ok(())
     }
 }
 
-impl Hash for State {
+impl<T: Hash> Hash for State<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for (name, entity) in &self.entities {
-            for (parameter_name, amount) in &entity.parameters {
-                (name.clone(), parameter_name.clone(), *amount).hash(state);
-            }
+        let mut hasher = DefaultHasher::new();
+        for (entity_name, entity) in &self.entities {
+            entity_name.hash(&mut hasher);
+            entity.hash(&mut hasher);
         }
+        hasher.finish().hash(state);
     }
 }
 
-impl PartialEq for State {
+impl<T: PartialEq> PartialEq for State<T> {
     fn eq(&self, other: &Self) -> bool {
-        let self_hasher = &mut DefaultHasher::new();
-        self.hash(self_hasher);
-        let other_hasher = &mut DefaultHasher::new();
-        other.hash(other_hasher);
-        self_hasher.finish() == other_hasher.finish()
+        self.entities == other.entities
     }
 }
 
-impl Eq for State {}
-
-impl State {
-    pub fn new(entities: Vec<(EntityName, Entity)>) -> Self {
+impl<
+        T: for<'a> Deserialize<'a>
+            + std::hash::Hash
+            + std::clone::Clone
+            + std::cmp::PartialEq
+            + std::fmt::Debug
+            + std::default::Default
+            + std::marker::Send
+            + std::marker::Sync
+            + Serialize,
+    > State<T>
+{
+    pub fn new(entities: Vec<(EntityName, Entity<T>)>) -> Self {
         Self {
             entities: entities.into_iter().collect(),
         }
     }
 
-    pub fn entity(&self, entity_name: &EntityName) -> Result<&Entity, StateError> {
+    pub fn entity(&self, entity_name: &EntityName) -> Result<&Entity<T>, StateError> {
         self.entities
             .get(entity_name)
             .ok_or_else(|| StateError::EntityNotFound {
@@ -177,11 +248,11 @@ impl State {
             })
     }
 
-    pub fn insert_entity(&mut self, entity_name: EntityName, entity: Entity) {
+    pub fn insert_entity(&mut self, entity_name: EntityName, entity: Entity<T>) {
         self.entities.insert(entity_name, entity);
     }
 
-    pub fn entity_mut(&mut self, entity_name: &EntityName) -> Result<&mut Entity, StateError> {
+    pub fn entity_mut(&mut self, entity_name: &EntityName) -> Result<&mut Entity<T>, StateError> {
         self.entities
             .get_mut(entity_name)
             .ok_or_else(|| StateError::EntityNotFound {
@@ -190,52 +261,41 @@ impl State {
             })
     }
 
-    pub fn iter_entities(&self) -> impl Iterator<Item = (&EntityName, &Entity)> {
+    pub fn iter_entities(&self) -> impl Iterator<Item = (&EntityName, &Entity<T>)> {
         self.entities.iter()
     }
 
-    pub fn iter_entities_mut(&mut self) -> impl Iterator<Item = (&EntityName, &mut Entity)> {
+    pub fn iter_entities_mut(&mut self) -> impl Iterator<Item = (&EntityName, &mut Entity<T>)> {
         self.entities.iter_mut()
     }
 
-    pub(crate) fn adjust_parameter(
+    pub fn set_parameter(
         &mut self,
         target: &EntityName,
-        parameter: ParameterName,
-        amount: Amount,
+        parameter_name: ParameterName,
+        parameter_val: Parameter<T>,
     ) -> Result<(), StateError> {
         let entity = self.entity_mut(target)?;
-        let parameter = entity.parameter_mut(&parameter)?;
-        *parameter += amount;
+        let parameter = entity.parameter_mut(&parameter_name)?;
+        *parameter = parameter_val;
         Ok(())
     }
 
-    pub(crate) fn set_parameter(
-        &mut self,
-        target: &EntityName,
-        parameter: ParameterName,
-        amount: Amount,
-    ) -> Result<(), StateError> {
-        let entity = self.entity_mut(target)?;
-        let parameter = entity.parameter_mut(&parameter)?;
-        *parameter = amount;
-        Ok(())
-    }
-
+    #[allow(clippy::type_complexity)]
     pub(crate) fn reachable_states(
         &self,
         base_state_probability: &Probability,
-        rules: &HashMap<RuleName, Rule>,
-        possible_states: &PossibleStates,
+        rules: &HashMap<RuleName, Rule<T>>,
+        possible_states: &PossibleStates<T>,
         cache: &Cache,
     ) -> Result<
         (
             ReachableStates,
-            PossibleStates,
+            PossibleStates<T>,
             Vec<ConditionCacheUpdate>,
             Vec<ActionCacheUpdate>,
         ),
-        ErrorKind,
+        ErrorKind<T>,
     > {
         let base_state_hash = StateHash::new(self);
         let mut new_base_state_probability: Probability = *base_state_probability;
@@ -246,7 +306,7 @@ impl State {
         let mut condition_cache_updates = Vec::new();
         let mut action_cache_updates = Vec::new();
 
-        let mut new_possible_states: PossibleStates = PossibleStates::new();
+        let mut new_possible_states = PossibleStates::new(HashMap::new());
 
         for (rule_name, rule) in rules {
             let base_state = possible_states.state(&base_state_hash)?;
@@ -264,7 +324,7 @@ impl State {
                     base_state_hash,
                     base_state.clone(),
                 )?;
-                if &new_state != self {
+                if new_state != *self {
                     new_base_state_probability *= 1. - f64::from(rule.weight());
                 }
                 if let Some(cache) = action_cache_update {
@@ -367,37 +427,68 @@ pub enum StateError {
 pub struct StateHash(u64);
 
 impl StateHash {
-    pub fn new(state: &State) -> Self {
+    pub fn new<T>(state: &State<T>) -> Self
+    where
+        T: Hash + Serialize + for<'a> Deserialize<'a>,
+    {
         let mut hasher = &mut DefaultHasher::new();
         state.hash(&mut hasher);
         Self(hasher.finish())
     }
 }
 
-#[derive(
-    Clone, PartialEq, Eq, Debug, Default, From, Into, AsRef, AsMut, Index, Serialize, Deserialize,
-)]
-pub struct PossibleStates(HashMap<StateHash, State>);
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PossibleStates<T>(HashMap<StateHash, State<T>>);
 
-impl Display for PossibleStates {
+impl<T: Debug + for<'a> Deserialize<'a>> Display for PossibleStates<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (state_hash, state) in &self.0 {
-            writeln!(f, "{state_hash}: {state}")?;
+            writeln!(f, "{state_hash}: {state:#?}")?;
         }
         Ok(())
     }
 }
 
-impl PossibleStates {
-    pub fn new() -> Self {
-        Self(HashMap::new())
+impl<T: Hash> Hash for PossibleStates<T> {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        for (state_hash, state) in &self.0 {
+            state_hash.hash(hasher);
+            state.hash(hasher);
+        }
+    }
+}
+
+impl<T: PartialEq> PartialEq for PossibleStates<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.len() == other.0.len()
+            && self
+                .0
+                .iter()
+                .all(|(state_hash, state)| other.0.get(state_hash) == Some(state))
+    }
+}
+
+impl<
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    > PossibleStates<T>
+{
+    pub fn new(possible_states: HashMap<StateHash, State<T>>) -> Self {
+        Self(possible_states)
     }
 
     pub(crate) fn append_state(
         &mut self,
         state_hash: StateHash,
-        state: State,
-    ) -> Result<(), PossibleStatesError> {
+        state: State<T>,
+    ) -> Result<(), PossibleStatesError<T>> {
         match self.0.get(&state_hash) {
             Some(present_state) => {
                 if state != *present_state {
@@ -416,14 +507,14 @@ impl PossibleStates {
         }
     }
 
-    pub(crate) fn merge(&mut self, states: &PossibleStates) -> Result<(), ErrorKind> {
+    pub(crate) fn merge(&mut self, states: &PossibleStates<T>) -> Result<(), ErrorKind<T>> {
         for (state_hash, state) in states.iter() {
             self.append_state(*state_hash, state.clone())?;
         }
         Ok(())
     }
 
-    pub fn state(&self, state_hash: &StateHash) -> Result<&State, PossibleStatesError> {
+    pub fn state(&self, state_hash: &StateHash) -> Result<&State<T>, PossibleStatesError<T>> {
         self.0
             .get(state_hash)
             .ok_or_else(|| PossibleStatesError::StateNotFound {
@@ -432,11 +523,11 @@ impl PossibleStates {
             })
     }
 
-    pub fn iter(&self) -> hashbrown::hash_map::Iter<StateHash, State> {
+    pub fn iter(&self) -> hashbrown::hash_map::Iter<StateHash, State<T>> {
         self.0.iter()
     }
 
-    pub fn values(&self) -> hashbrown::hash_map::Values<StateHash, State> {
+    pub fn values(&self) -> hashbrown::hash_map::Values<StateHash, State<T>> {
         self.0.values()
     }
 
@@ -455,7 +546,7 @@ impl PossibleStates {
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Error)]
-pub enum PossibleStatesError {
+pub enum PossibleStatesError<T: Clone + Debug> {
     #[error("State not found: {state_hash:#?}")]
     StateNotFound { state_hash: StateHash, context: trc },
 
@@ -465,7 +556,7 @@ pub enum PossibleStatesError {
     #[error("Possible states send error: {source:#?}")]
     PossibleStatesSendError {
         #[source]
-        source: SendError<PossibleStates>,
+        source: SendError<PossibleStates<T>>,
         context: trc,
     },
 }
@@ -521,7 +612,20 @@ impl ReachableStates {
         Ok(())
     }
 
-    pub fn merge(&mut self, states: &ReachableStates) -> Result<(), ErrorKind> {
+    pub fn merge<
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    >(
+        &mut self,
+        states: &ReachableStates,
+    ) -> Result<(), ErrorKind<T>> {
         for (state_hash, state_probability) in states.iter() {
             self.append_state(*state_hash, *state_probability)?;
         }
@@ -591,14 +695,25 @@ impl ReachableStates {
         )
     }
 
-    pub(crate) fn apply_rules(
+    pub(crate) fn apply_rules<T>(
         &self,
-        possible_states: &mut PossibleStates,
+        possible_states: &mut PossibleStates<T>,
         cache: &mut Cache,
-        rules: &HashMap<RuleName, Rule>,
-    ) -> Result<ReachableStates, ErrorKind> {
+        rules: &HashMap<RuleName, Rule<T>>,
+    ) -> Result<ReachableStates, ErrorKind<T>>
+    where
+        T: Hash
+            + Clone
+            + PartialEq
+            + Debug
+            + Default
+            + Serialize
+            + Send
+            + Sync
+            + for<'a> Deserialize<'a>,
+    {
         let new_reachable_states_mutex = Mutex::new(ReachableStates::new());
-        let possible_states_update_mutex = Mutex::new(PossibleStates::new());
+        let possible_states_update_mutex = Mutex::new(PossibleStates::default());
         let cache_update_mutex = Mutex::new(cache.clone());
 
         self.par_iter()
@@ -677,20 +792,20 @@ mod tests {
 
     #[test]
     fn entity_get_parameter_should_return_value_on_present_parameter() {
-        let parameters = vec![(ParameterName::new("parameter"), Amount::from(1.))];
+        let parameters = vec![(ParameterName::new("parameter"), Parameter::new(1))];
         let entity = Entity::new(parameters);
         assert_eq!(
             entity
                 .parameter(&ParameterName::new("parameter"))
                 .cloned()
                 .unwrap(),
-            Amount::from(1.)
+            Parameter::new(1)
         );
     }
 
     #[test]
     fn entity_get_parameter_should_return_error_on_missing_parameter() {
-        let parameters = vec![(ParameterName::new("parameter"), Amount::from(1.))];
+        let parameters = vec![(ParameterName::new("parameter"), Parameter::new(1))];
         let entity = Entity::new(parameters);
         if let Err(EntityError::ParameterNotFound { parameter_name, .. }) =
             entity.parameter(&ParameterName::new("missing_parameter"))
@@ -705,19 +820,19 @@ mod tests {
     fn state_partial_equal_works_as_expected() {
         let state_a_0 = State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))]),
         )]);
         let state_a_1 = State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))]),
         )]);
         let state_b = State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(1.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(1))]),
         )]);
         let state_c = State::new(vec![(
             EntityName::new("B"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(1.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(1))]),
         )]);
         assert_eq!(state_a_0, state_a_1);
         assert_ne!(state_a_0, state_b);
@@ -729,12 +844,12 @@ mod tests {
     fn state_get_entity_should_return_value_on_present_entity() {
         let state = State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))]),
         )]);
 
         assert_eq!(
             state.entity(&EntityName::new("A"),).cloned().unwrap(),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))])
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))])
         );
     }
 
@@ -742,7 +857,7 @@ mod tests {
     fn state_get_entity_should_return_error_on_missing_entity() {
         let state = State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))]),
         )]);
 
         if let Err(StateError::EntityNotFound { entity_name, .. }) =
@@ -758,12 +873,12 @@ mod tests {
     fn state_get_mut_entity_should_return_value_on_present_entity() {
         let mut state = State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))]),
         )]);
 
         assert_eq!(
             state.entity_mut(&EntityName::new("A"),).unwrap(),
-            &mut Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))])
+            &mut Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))])
         );
     }
 
@@ -771,7 +886,7 @@ mod tests {
     fn state_get_mut_entity_should_return_error_on_missing_entity() {
         let mut state = State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))]),
         )]);
 
         if let Err(StateError::EntityNotFound { entity_name, .. }) = state
@@ -789,12 +904,12 @@ mod tests {
         let state = State::new(vec![(
             EntityName::new("A"),
             Entity::new(vec![
-                (ParameterName::new("Parameter"), Amount::from(0.)),
-                (ParameterName::new("Parameter2"), Amount::from(0.)),
+                (ParameterName::new("Parameter"), Parameter::new(0)),
+                (ParameterName::new("Parameter2"), Parameter::new(0)),
             ]),
         )]);
         let state_hash = StateHash::new(&state);
-        let mut possible_states = PossibleStates::new();
+        let mut possible_states = PossibleStates::default();
         possible_states
             .append_state(state_hash, state.clone())
             .unwrap();
@@ -804,8 +919,8 @@ mod tests {
         let new_state = State::new(vec![(
             EntityName::new("A"),
             Entity::new(vec![
-                (ParameterName::new("Parameter"), Amount::from(1.)),
-                (ParameterName::new("Parameter2"), Amount::from(2.)),
+                (ParameterName::new("Parameter"), Parameter::new(1)),
+                (ParameterName::new("Parameter2"), Parameter::new(2)),
             ]),
         )]);
 
@@ -818,7 +933,7 @@ mod tests {
     #[test]
     fn reachable_states_append_state() {
         let mut reachable_states = ReachableStates::new();
-        let state_hash = StateHash::new(&State::default());
+        let state_hash = StateHash::new::<i32>(&State::default());
         let probability = Probability::from(1.);
         reachable_states
             .append_state(state_hash, probability)
@@ -835,14 +950,14 @@ mod tests {
     #[test]
     fn reachable_states_probability_sum() {
         let mut reachable_states = ReachableStates::new();
-        let state_hash = StateHash::new(&State::default());
+        let state_hash = StateHash::new::<i32>(&State::default());
         let probability = Probability::from(0.2);
         reachable_states
             .append_state(state_hash, probability)
             .unwrap();
         let state_hash = StateHash::new(&State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))]),
         )]));
         let probability = Probability::from(0.5);
         reachable_states
@@ -855,14 +970,14 @@ mod tests {
     fn reachable_states_entropy() {
         let mut reachable_states = ReachableStates::new();
         assert_eq!(reachable_states.entropy(), Entropy::from(0.));
-        let state_hash = StateHash::new(&State::default());
+        let state_hash = StateHash::new::<i32>(&State::default());
         let probability = Probability::from(0.5);
         reachable_states
             .append_state(state_hash, probability)
             .unwrap();
         let state_hash = StateHash::new(&State::new(vec![(
             EntityName::new("A"),
-            Entity::new(vec![(ParameterName::new("Parameter"), Amount::from(0.))]),
+            Entity::new(vec![(ParameterName::new("Parameter"), Parameter::new(0))]),
         )]));
         let probability = Probability::from(0.5);
         reachable_states
