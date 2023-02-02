@@ -114,7 +114,7 @@ pub struct SerializableSimulation<T> {
 #[derive(Clone, Default)]
 pub struct Simulation<T> {
     history: Box<History<T>>,
-    rules: Box<HashMap<RuleName, Rule<T>>>,
+    rules: HashMap<RuleName, Rule<T>>,
     possible_states: PossibleStates<T>,
     cache: Cache,
 }
@@ -203,7 +203,7 @@ impl<
     ) -> Simulation<T> {
         Simulation {
             possible_states,
-            rules: Box::new(rules),
+            rules,
             history: Box::new(History::new(reachable_states)),
             cache: Cache::new(),
         }
@@ -246,23 +246,21 @@ impl<
         let history = History { steps };
         Ok(Simulation {
             history: Box::new(history),
-            rules: Box::new(
-                serializable_simulation
-                    .rules
-                    .iter()
-                    .map(|rule_name| {
-                        let rule = rules.get(rule_name);
-                        if let Some(rule) = rule {
-                            Ok((rule_name.clone(), rule.clone()))
-                        } else {
-                            Err(RuleError::RuleNotFound {
-                                rule_name: rule_name.clone(),
-                                context: get_backtrace(),
-                            })
-                        }
-                    })
-                    .collect::<Result<HashMap<RuleName, Rule<T>>, RuleError>>()?,
-            ),
+            rules: serializable_simulation
+                .rules
+                .iter()
+                .map(|rule_name| {
+                    let rule = rules.get(rule_name);
+                    if let Some(rule) = rule {
+                        Ok((rule_name.clone(), rule.clone()))
+                    } else {
+                        Err(RuleError::RuleNotFound {
+                            rule_name: rule_name.clone(),
+                            context: get_backtrace(),
+                        })
+                    }
+                })
+                .collect::<Result<HashMap<RuleName, Rule<T>>, RuleError>>()?,
             possible_states: serializable_simulation.possible_states,
             cache: serializable_simulation.cache,
         })
@@ -309,8 +307,7 @@ impl<
     pub fn next_step(&mut self) -> Result<(), ErrorKind<T>> {
         let rules = self.rules.clone();
         let next_reachable_states = self.next_reachable_states(&rules)?;
-        self.history
-            .append(Step::new(next_reachable_states, *rules));
+        self.history.append(Step::new(next_reachable_states, rules));
         Ok(())
     }
 
