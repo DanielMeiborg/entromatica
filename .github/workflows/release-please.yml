@@ -14,7 +14,6 @@ jobs:
         id: release
         with:
           release-type: rust
-          package-name: release-please-action
           bump-minor-pre-major: true
           bump-patch-for-minor-pre-major: true
 
