@@ -7,7 +7,7 @@
 
 * panics on debug mode with attempt to multiply with overflow ([6ed567b](https://github.com/Entromatica/entromatica/commit/6ed567bea77f6926c0c0fa52f6cd87b33191e494))
 
-## [0.24.0](https://github.com/Entromatica/entromatica/compare/v0.23.0...v0.24.0) (2023-03-09)
+## [1.0.0](https://github.com/Entromatica/entromatica/compare/v0.23.0...v1.0.0) (2023-03-09)
 
 
 ### ⚠ BREAKING CHANGES
