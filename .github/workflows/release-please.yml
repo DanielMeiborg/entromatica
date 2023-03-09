@@ -3,12 +3,12 @@ on:
     branches:
       - main
 name: release-please
+permissions: write-all
 env:
   BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 jobs:
   release-please:
     runs-on: ubuntu-latest
-    permissions: write-all
     steps:
       - name: Release Please
         uses: google-github-actions/release-please-action@v3
