@@ -3,13 +3,13 @@ on:
     branches:
       - main
 name: release-please
-permissions:
-  contents: write
-  pull-requests: write
 env:
   BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 jobs:
   release-please:
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Release Please
