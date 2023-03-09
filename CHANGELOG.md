@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.0](https://github.com/Entromatica/entromatica/compare/v0.23.0...v0.24.0) (2023-03-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* About everything
+
+### Features
+
+* Rule mechanism for seperated frontend/backend ([12f38ad](https://github.com/Entromatica/entromatica/commit/12f38ad16943b9d127fce0cde41294a36c586e75))
+* **separation:** generic simulation ([e39f0d0](https://github.com/Entromatica/entromatica/commit/e39f0d0715025f551e2550edc1ed2801bbf6bf8e))
+
 ## [0.23.0](https://github.com/DanielMeiborg/entromatica/compare/v0.22.1...v0.23.0) (2023-01-28)
 
 
