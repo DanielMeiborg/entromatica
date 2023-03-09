@@ -9,6 +9,7 @@ jobs:
   lint-and-test:
     name: Run tests, lint
     runs-on: ubuntu-latest
+    permissions: write-all
     steps:
       - name: Checkout
         uses: actions/checkout@v3
