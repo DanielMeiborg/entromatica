@@ -266,9 +266,9 @@ where
                         .iter()
                         .map(|(_, _, probability)| probability)
                         .sum::<Probability>()
-                        * 10_i32.pow(10) as f64)
+                        * 10_i64.pow(10) as f64)
                         .round()
-                        / 10_i32.pow(10) as f64,
+                        / 10_i64.pow(10) as f64,
                     1.0,
                     "Sum of probabilities of next states is not 1.0"
                 );
