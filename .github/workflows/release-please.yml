@@ -3,7 +3,9 @@ on:
     branches:
       - main
 name: release-please
-permissions: write-all
+permissions:
+  contents: write
+  pull-requests: write
 env:
   BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 jobs:
@@ -17,6 +19,7 @@ jobs:
           release-type: rust
           bump-minor-pre-major: true
           bump-patch-for-minor-pre-major: true
+          package-name: entromatica
 
       - name: Checkout
         if: ${{ steps.release.outputs.release_created }}
