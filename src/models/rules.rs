@@ -16,6 +16,84 @@ pub type RuleName = String;
 pub type RuleApplies = bool;
 pub type ProbabilityWeight = f64;
 
+/// The key part of the rule-mechanism.
+///
+/// A rule consists of four parts:
+/// - A condition, which determines whether the rule applies to a given state.
+/// - A weight, which determines the relative probability of the rule if the
+///   condition applies. This must be a value between 0 and 1.
+/// - An action, which determines the new state if the rule applies.
+/// - A description, which is used for as the description of the transition.
+///
+/// The generic parameter `T` is the state itself.
+///
+/// For each transition, only a single rule can be applied. If no rule applies,
+/// the state remains the same. If exactly one rule applies, the probability
+/// weight is the probability for that transition. The following mechanism is
+/// used to determine the probabilities for the new states if multiple rules
+/// apply to the same state:
+///
+/// 1. The probability of **no rule** applying is calculated by multiplying for
+///    all rules 1 - the rule's weight.
+/// 2. The remaining probability is distributed among the rules according to the
+///    weights.
+///
+/// So if two rules apply for the same state, if both have a weight of 1 (which
+/// normally would mean that the rule applies with 100% probability), the
+/// probability for each transition is 0.5. If both rules have a weight of 0.5
+/// instead, the probability for the do-nothing transition is 0.25, and the
+/// probability for each rules transition is 0.375.
+///
+///
+/// # Example
+/// ```rust
+/// use entromatica::prelude::*;
+/// use entromatica::models::rules::*;
+/// use std::sync::Arc;
+/// use hashbrown::HashMap;
+///
+/// // A random walk where the chance of suddenly returning to the initial state is 0.1
+/// let initial_state = 0;
+/// let return_rule: Rule<i32> = Rule::new(
+///     "Return".to_string(),
+///     Arc::new(|state| state != 0),
+///     0.1,
+///     Arc::new(|_| 0),
+/// );
+/// let forward_rule: Rule<i32> = Rule::new(
+///     "Forward".to_string(),
+///     Arc::new(|_| true),
+///     1.,
+///     Arc::new(|state| state + 1),
+/// );
+///
+/// let backward_rule: Rule<i32> = Rule::new(
+///     "Backward".to_string(),
+///     Arc::new(|_| true),
+///     1.,
+///     Arc::new(|state| state - 1),
+/// );
+///
+/// let rules = vec![forward_rule, backward_rule, return_rule];
+///
+/// let state_transition_generator = get_state_transition_generator(rules);
+/// let mut simulation = Simulation::new(initial_state, state_transition_generator);
+///
+/// // state == 0
+/// assert_eq!(simulation.probability_distribution(0).len(), 1);
+///
+/// // now -1 and 1 are equally likely
+/// simulation.next_step();
+/// assert_eq!(simulation.probability_distribution(1).len(), 2);
+///
+/// // now are -2, 0 and 2 possible
+/// simulation.next_step();
+/// assert_eq!(simulation.probability_distribution(2).len(), 3);
+///
+/// // and last but not least -3, -1, 0, 1 and 3. 0 is only possible because of the return rule
+/// simulation.next_step();
+/// assert_eq!(simulation.probability_distribution(3).len(), 5);
+/// ```
 #[derive(From, Into, Clone)]
 pub struct Rule<T> {
     description: String,
@@ -43,6 +121,17 @@ impl<T> Display for Rule<T> {
 }
 
 impl<T> Rule<T> {
+    /// Create a new rule.
+    ///
+    /// # Arguments
+    /// - `description`: A description of the rule. This is used for the
+    ///   description of the transition.
+    /// - `condition`: A function that determines whether the rule applies to a
+    ///   given state.
+    /// - `probability_weight`: The probability weight of the rule. This is used
+    ///   to calculate the probability of the transition.
+    /// - `action`: A function that determines the new state if the rule
+    ///   applies.
     pub fn new(
         description: String,
         condition: Arc<dyn Fn(T) -> RuleApplies + Send + Sync>,
@@ -57,42 +146,55 @@ impl<T> Rule<T> {
         }
     }
 
+    /// Executes the rule's condition function on the given state and returns
+    /// the result.
     pub fn applies(&self, state: T) -> RuleApplies {
         (self.condition)(state)
     }
 
+    /// Executes the rule's action function on the given state and returns the result.
     pub fn apply(&self, state: T) -> T {
         (self.action)(state)
     }
 
+    /// Returns the rule's probability weight.
     pub fn weight(&self) -> ProbabilityWeight {
         self.weight
     }
 
+    /// Returns the rule's description.
     pub fn description(&self) -> &String {
         &self.description
     }
 
+    /// Returns a reference to the rule's condition function.
     pub fn condition(&self) -> &(dyn Fn(T) -> RuleApplies + Send + Sync) {
         &*self.condition
     }
 
+    /// Returns a reference to the rule's action function.
     pub fn action(&self) -> &(dyn Fn(T) -> T + Send + Sync) {
         &*self.action
     }
 }
 
-pub fn get_state_transition_generator<T>(
-    rules: HashMap<RuleName, Rule<T>>,
-) -> StateTransitionGenerator<T, String>
+/// A function that creates a state transition generator from a set of rules.
+///
+/// # Arguments
+/// - `rules`: A list of rules that are used to create the state transition
+///  generator.
+///
+/// # Returns
+/// A state transition generator that can be used to create a simulation.
+pub fn get_state_transition_generator<T>(rules: Vec<Rule<T>>) -> StateTransitionGenerator<T, String>
 where
     T: Debug + Clone + Send + Sync + 'static + PartialEq + Eq + Hash,
 {
     Arc::new(move |state: T| -> OutgoingTransitions<T, String> {
         let new_states_by_weight = rules
             .iter()
-            .filter(|(_, rule)| rule.applies(state.clone()))
-            .map(|(_, rule)| {
+            .filter(|rule| rule.applies(state.clone()))
+            .map(|rule| {
                 let new_state: T = rule.apply(state.clone());
                 let weight = rule.weight();
                 let description = rule.description().clone();
@@ -170,10 +272,7 @@ mod tests {
             Arc::new(|state| state - 1),
         );
 
-        let rules: HashMap<RuleName, Rule<i32>> = HashMap::from([
-            ("forward".to_string(), forward_rule),
-            ("backward".to_string(), backward_rule),
-        ]);
+        let rules = vec![forward_rule, backward_rule];
 
         let state_transition_generator = get_state_transition_generator(rules);
         let mut simulation = Simulation::new(initial_state, state_transition_generator);
@@ -231,11 +330,7 @@ mod tests {
             Arc::new(|state| state - 1),
         );
 
-        let rules: HashMap<RuleName, Rule<i32>> = HashMap::from([
-            ("forward".to_string(), forward_rule),
-            ("backward".to_string(), backward_rule),
-            ("return".to_string(), return_rule),
-        ]);
+        let rules = vec![forward_rule, backward_rule, return_rule];
 
         let state_transition_generator = get_state_transition_generator(rules);
         let mut simulation = Simulation::new(initial_state, state_transition_generator);
