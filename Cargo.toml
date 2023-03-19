@@ -4,7 +4,7 @@ version = "1.0.1"
 edition = "2021"
 authors = ["Daniel Meiborg"]
 license = "MIT OR Apache-2.0"
-description = "A simulation library for markov chains with a uniform steady state distribution centered around their entropy"
+description = "Entromatica is a library for constructing, simulating and analyzing markov chains."
 repository = "https://github.com/DanielMeiborg/entromatica"
 documentation = "https://docs.rs/entromatica"
 
