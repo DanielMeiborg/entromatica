@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/DanielMeiborg/entromatica/compare/v1.0.1...v2.0.0) (2023-03-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* rules::get_state_transition_generator takes now a vec of rules
+
+### Features
+
+* rules::get_state_transition_generator takes now a vec of rules ([9b59afa](https://github.com/DanielMeiborg/entromatica/commit/9b59afaaa410dbee350b75c4fe86619337191e26))
+
 ## [1.0.1](https://github.com/Entromatica/entromatica/compare/v1.0.0...v1.0.1) (2023-03-09)
 
 
