@@ -16,6 +16,7 @@ backtrace = "0.3.67"
 derive_more = "0.99.17"
 hashbrown = { version = "0.13.1", features = ["rayon", "serde"] }
 itertools = "0.10.5"
+ndarray = "0.15.6"
 petgraph = "0.6.2"
 rayon = "1.5"
 serde = { version = "1.0.152", features = ["derive"]}

@@ -6,6 +6,8 @@ use std::{
 
 use crate::prelude::*;
 use hashbrown::HashMap;
+use itertools::Itertools;
+use ndarray::Array2;
 use petgraph::{graph::Graph, visit::EdgeRef};
 use rayon::prelude::*;
 
@@ -290,7 +292,8 @@ where
     /// Gets a list of all known states.
     ///
     /// States are known when they have been returned at some point by the state
-    /// transition generator.
+    /// transition generator. The ordering is arbitrary, not necessarily
+    /// consistent over multiple calls and can change at any time in the future.
     pub fn known_states(&self) -> Vec<S> {
         self.known_states.values().cloned().collect()
     }
@@ -298,7 +301,8 @@ where
     /// Gets a list of all known transitions.
     ///
     /// Transitions are known when they have been returned at some point by the
-    /// state transition generator.
+    /// state transition generator. The ordering is arbitrary, not necessarily
+    /// consistent over multiple calls and can change at any time in the future.
     pub fn known_transitions(&self) -> Vec<T> {
         self.known_transitions.values().cloned().collect()
     }
@@ -506,10 +510,112 @@ where
         let uniform_entropy_after_step = simulation_clone.entropy(next_time + 1);
         uniform_entropy_after_step == uniform_entropy
     }
+
+    /// Get the transition rate matrix of the markov chain.
+    ///
+    /// This method returns the transition rate matrix of the state transition
+    /// Graph. This is a ndarray where the value at index (i, j) is the
+    /// probability that the markov chain transitions from state i to state j.
+    /// To do that it makes a cache-only full traversal.
+    ///
+    /// The second part of the return type is the ordering. If a state is at the
+    /// nth position in the vector, it means that it corresponds to the nth row
+    /// and the nth column. The ordering is arbitrary, not necessarily
+    /// consistent over multiple calls and can change at any time in the future.
+    ///
+    /// If the number of states is infinte this method will never return.
+    ///
+    /// # Example
+    /// ```rust
+    ///  use entromatica::prelude::*;
+    ///  use std::sync::Arc;
+    ///
+    /// // A simple random walk in a circle with NUM_STATES positions
+    /// let initial_state = 0;
+    /// const NUM_STATES: i32 = 5;
+    /// let state_transition_generator = Arc::new(|state: i32| -> OutgoingTransitions<i32, &str> {
+    ///     vec![
+    ///         (
+    ///             {
+    ///                 if state + 1 == NUM_STATES {
+    ///                     0
+    ///                 } else {
+    ///                     state + 1
+    ///                 }
+    ///             },
+    ///             "forward",
+    ///             0.5,
+    ///         ),
+    ///         (
+    ///             {
+    ///                 if state - 1 == -1 {
+    ///                     NUM_STATES - 1
+    ///                 } else {
+    ///                     state - 1
+    ///                 }
+    ///             },
+    ///             "backward",
+    ///             0.5,
+    ///         ),
+    ///     ]
+    /// });
+    /// let mut simulation = Simulation::new(initial_state, state_transition_generator);
+    /// let (transition_rate_matrix, ordering) = simulation.transition_rate_matrix();
+    /// // The transition rate matrix is a square matrix with a size equal to the number of states
+    /// assert_eq!(transition_rate_matrix.nrows(), NUM_STATES as usize);
+    /// assert_eq!(transition_rate_matrix.ncols(), NUM_STATES as usize);
+    ///
+    /// // The probability of transitioning from state 0 to 1 is 0.5
+    /// let index = (ordering.iter().position(|state| *state == 0).unwrap(), ordering.iter().position(|state| *state == 1).unwrap());
+    /// assert_eq!(transition_rate_matrix.get(index), Some(&0.5));
+    /// ```
+    pub fn transition_rate_matrix(&mut self) -> (Array2<Probability>, Vec<S>) {
+        self.full_traversal(true);
+        let ordering_hash_map: HashMap<StateHash, usize> = self
+            .known_states
+            .iter()
+            .enumerate()
+            .map(|(index, (hash, _))| (*hash, index))
+            .collect();
+        let mut transition_rate_matrix =
+            Array2::zeros((ordering_hash_map.len(), ordering_hash_map.len()));
+        self.state_transition_graph
+            .edge_references()
+            .for_each(|edge_reference| {
+                let source_index = ordering_hash_map
+                    .get(
+                        self.state_transition_graph
+                            .node_weight(edge_reference.source())
+                            .unwrap(),
+                    )
+                    .unwrap();
+                let target_index = ordering_hash_map
+                    .get(
+                        self.state_transition_graph
+                            .node_weight(edge_reference.target())
+                            .unwrap(),
+                    )
+                    .unwrap();
+                *transition_rate_matrix
+                    .get_mut((*source_index, *target_index))
+                    .unwrap() = edge_reference.weight().1;
+            });
+        (
+            transition_rate_matrix,
+            ordering_hash_map
+                .iter()
+                .map(|(hash, order)| (order, self.known_states.get(hash).unwrap()))
+                .sorted_by(|(index_a, _), (index_b, _)| index_a.cmp(index_b))
+                .map(|(_, state)| state.clone())
+                .collect(),
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use ndarray::{Array1, Axis};
+
     use super::*;
 
     #[test]
@@ -637,6 +743,22 @@ mod tests {
             simulation.state_transition_graph().edge_count(),
             2 * NUM_STATES as usize
         );
+
+        let (transition_rate_matrix, ordering) = simulation.transition_rate_matrix();
+        dbg!(&transition_rate_matrix);
+        dbg!(&ordering);
+        assert_eq!(transition_rate_matrix.nrows(), NUM_STATES as usize);
+        assert_eq!(transition_rate_matrix.ncols(), NUM_STATES as usize);
+        assert_eq!(
+            transition_rate_matrix.sum_axis(Axis(0)),
+            Array1::from_elem(NUM_STATES as usize, 1.0)
+        );
+        assert_eq!(
+            transition_rate_matrix.sum_axis(Axis(1)),
+            Array1::from_elem(NUM_STATES as usize, 1.0)
+        );
+        assert_eq!(transition_rate_matrix.get((0, 1)), Some(&0.5));
+        assert_eq!(transition_rate_matrix.get((1, 0)), Some(&0.5));
     }
 
     #[test]
