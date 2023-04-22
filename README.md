@@ -18,7 +18,7 @@ that takes a state and returns a list of the next states in the markov chain
 with their respective relative probabilities.
 
 The `models` module contains a collection of structs and functions that try
-to make constructing the state transition generator easier. As of v1.0.1 this
+to make constructing the state transition generator easier. Currently this
 includes only a single model: `rules`.
 
 ```rust

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/DanielMeiborg/entromatica/compare/v2.0.0...v2.1.0) (2023-03-23)
+
+
+### Features
+
+* Implement transition rate matrix, closes [#2](https://github.com/DanielMeiborg/entromatica/issues/2) ([409cd8c](https://github.com/DanielMeiborg/entromatica/commit/409cd8c351aaa3a07de448a3ed539ab676af13bc))
+
 ## [2.0.0](https://github.com/DanielMeiborg/entromatica/compare/v1.0.1...v2.0.0) (2023-03-19)
 
 
