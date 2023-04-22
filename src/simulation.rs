@@ -610,6 +610,28 @@ where
                 .collect(),
         )
     }
+
+    /// Get the stationary distribution of the markov chain.
+    ///
+    /// This method returns the stationary distribution of the markov chain by
+    /// exponentiating the transition rate matrix. `rounds` is the number of
+    /// times the transition rate matrix is multiplied with itself and thus
+    /// determines the accuracy and time usage of this method.
+    pub fn stationary_distribution(&mut self, rounds: u64) -> StateProbabilityDistribution<S> {
+        let (transition_rate_matrix, ordering) = self.transition_rate_matrix();
+        let mut new_matrix = transition_rate_matrix.clone();
+        for _ in 0..rounds {
+            new_matrix = new_matrix.dot(&transition_rate_matrix);
+        }
+        dbg!(&new_matrix);
+        let stationary_distribution = new_matrix.row(0);
+
+        ordering
+            .iter()
+            .zip(stationary_distribution.iter())
+            .map(|(state, probability)| (state.clone(), *probability))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -819,5 +841,39 @@ mod tests {
             let mut simulation = Simulation::new(initial_state, state_transition_generator);
             assert!(!simulation.uniform_distribution_is_steady());
         }
+    }
+
+    #[test]
+    fn stationary_distribution() {
+        let initial_state = 0;
+        const NUM_STATES: i32 = 5;
+        let state_transition_generator = Arc::new(|state: i32| -> OutgoingTransitions<i32, &str> {
+            let next = if state + 1 == NUM_STATES {
+                0
+            } else {
+                state + 1
+            };
+            if next == 0 {
+                vec![(0, "forward|stay", 1.0)]
+            } else {
+                vec![(next, "forward", 0.1), (0, "stay", 0.9)]
+            }
+        });
+        let mut simulation = Simulation::new(initial_state, state_transition_generator);
+        simulation.full_traversal(true);
+        for _ in 0..100 {
+            simulation.next_step();
+        }
+        let stationary_distribution = simulation.stationary_distribution(100);
+        assert!(
+            simulation
+                .probability_distribution(simulation.time())
+                .iter()
+                .zip(&stationary_distribution)
+                .map(|(a, b)| a.1 - b.1)
+                .sum::<f64>()
+                .abs()
+                < 1e-6
+        );
     }
 }
