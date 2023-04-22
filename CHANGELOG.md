@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/DanielMeiborg/entromatica/compare/v2.1.0...v2.2.0) (2023-04-22)
+
+
+### Features
+
+* Add get stationary distribution method, closes [#36](https://github.com/DanielMeiborg/entromatica/issues/36) ([1c119b7](https://github.com/DanielMeiborg/entromatica/commit/1c119b72f9e51d6f4b52c06e293d048d96970ea8))
+
 ## [2.1.0](https://github.com/DanielMeiborg/entromatica/compare/v2.0.0...v2.1.0) (2023-03-23)
 
 
