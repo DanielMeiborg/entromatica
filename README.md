@@ -29,7 +29,7 @@ use std::sync::Arc;
 // The initial state. It has to be Hash + Clone + Send + Sync + PartialEq + Eq + Debug
 let initial_state: i32 = 0;
 
-// The state transition generator. The simulation panics if the probabilities don't sum to 1.0
+// The state transition generator. The simulation panics if the probabilities don't sum up to 1.0
 let state_transition_generator =
 Arc::new(|state: i32| vec![(state + 1, "next", 0.5), (state - 1, "previous", 0.5)]);
 
