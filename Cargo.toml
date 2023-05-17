@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 description = "Entromatica is a library for constructing, simulating and analyzing markov chains."
 repository = "https://github.com/DanielMeiborg/entromatica"
 documentation = "https://docs.rs/entromatica"
-
+homepage = "https://entromatica.com"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
