@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/DanielMeiborg/entromatica/compare/v2.2.0...v2.3.0) (2023-05-17)
+
+
+### Features
+
+* Publish website on entromatica.com ([474e57f](https://github.com/DanielMeiborg/entromatica/commit/474e57f3c65d68ffa342d72488c926570c1cac77))
+
 ## [2.2.0](https://github.com/DanielMeiborg/entromatica/compare/v2.1.0...v2.2.0) (2023-04-22)
 
 
